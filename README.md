@@ -12,11 +12,11 @@ Browser runtime demo for **SumeruAI TalkingHead** digital humans. Integrates:
 
 The repo ships an interactive demo at **`index.html`** — the entry point for trying the SDK locally or on GitHub Pages.
 
-| File | Role |
-| ---- | ---- |
-| [`index.html`](./index.html) | Demo UI (Quick + Developer tabs) |
-| [`demo/demo.js`](./demo/demo.js) | Demo logic — auth, model load, drive playback |
-| [`demo/demo.css`](./demo/demo.css) | Demo layout and styles |
+| File                               | Role                                          |
+| ---------------------------------- | --------------------------------------------- |
+| [`index.html`](./index.html)       | Demo UI (Quick + Developer tabs)              |
+| [`demo/demo.js`](./demo/demo.js)   | Demo logic — auth, model load, drive playback |
+| [`demo/demo.css`](./demo/demo.css) | Demo layout and styles                        |
 
 **Run locally**
 
@@ -59,10 +59,10 @@ For a stripped-down starting point to copy into your project, use [`examples/min
 
 ## API base URL
 
-| | Value |
-|---|--------|
-| **API origin** | `https://api.sumeruai.us` |
-| **API base** | `https://api.sumeruai.us/v1` |
+|                | Value                        |
+| -------------- | ---------------------------- |
+| **API origin** | `https://api.sumeruai.us`    |
+| **API base**   | `https://api.sumeruai.us/v1` |
 
 See [Developer API](https://api.sumeruai.us) for the official Open API reference.
 
@@ -70,11 +70,11 @@ See [Developer API](https://api.sumeruai.us) for the official Open API reference
 
 Committed for public playback without API calls (used by `index.html` Quick tab):
 
-| File | Purpose |
-|------|---------|
-| `demo/assets-cache.json` | `modelId`, `downloadLink`, paths to bundled drive files |
-| `demo/assets/welcome.wav` | Welcome TTS audio |
-| `demo/assets/welcome-emote.json` | Lip-sync (`AK/ABI/ATI/API/fps`) |
+| File                             | Purpose                                                 |
+| -------------------------------- | ------------------------------------------------------- |
+| `demo/assets-cache.json`         | `modelId`, `downloadLink`, paths to bundled drive files |
+| `demo/assets/welcome.wav`        | Welcome TTS audio                                       |
+| `demo/assets/welcome-emote.json` | Lip-sync (`AK/ABI/ATI/API/fps`)                         |
 
 Refresh (maintainers only):
 
