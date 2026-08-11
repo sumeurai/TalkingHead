@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Minimal TalkingHead example</title>
+    <style>
+      body {
+        margin: 0;
+        background: #111;
+        color: #eee;
+        font-family: system-ui, sans-serif;
+        padding: 16px;
+      }
+      .stage {
+        width: 360px;
+        height: 480px;
+        margin: 16px 0;
+        background: #000;
+      }
+      canvas {
+        width: 100%;
+        height: 100%;
+        display: block;
+      }
+      code {
+        font-size: 0.85rem;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Minimal integration</h1>
+    <p>
+      Set env vars below, then use <code>sdk/sumeru-drive.js</code> — same as
+      Developer sandbox.
+    </p>
+    <div class="stage"><canvas id="c"></canvas></div>
+    <button type="button" id="drive-text" disabled>Text → TTS + /dt</button>
+    <button type="button" id="drive-audio" disabled>Audio file → /dt</button>
+
+    <script type="module">
+      import { createAvatar } from "../sdk/sumeru-avatar.js";
+      import { auth } from "../sdk/sumeru-atf-api.js";
+      import { driveFromText, driveFromAudioFile } from "../sdk/sumeru-drive.js";
+
+      const ACCESS_KEY = "";
+      const SECRET_KEY = "";
+      const MODEL_URL = "";
+      const MODEL_ID = "";
+      const VOICE_ID = "";
+      const SCRIPT =
+        "Hello, this is a minimal TalkingHead lip-sync example.";
+
+      const btnText = document.getElementById("drive-text");
+      const btnAudio = document.getElementById("drive-audio");
+      let avatar = null;
+      let token = "";
+
+      if (MODEL_URL && ACCESS_KEY && SECRET_KEY && MODEL_ID && VOICE_ID) {
+        token = await auth(ACCESS_KEY, SECRET_KEY);
+        avatar = await createAvatar({
+          canvas: document.getElementById("c"),
+          modelUrl: MODEL_URL,
+          workerBase: "../workers/",
+          onReady: () => {
+            btnText.disabled = false;
+            btnAudio.disabled = false;
+          },
+        });
+      }
+
+      btnText.addEventListener("click", async () => {
+        if (!avatar) return;
+        await driveFromText(avatar, token, {
+          modelId: MODEL_ID,
+          voiceId: VOICE_ID,
+          text: SCRIPT,
+        });
+      });
+
+      btnAudio.addEventListener("click", async () => {
+        if (!avatar) return;
+        const input = document.createElement("input");
+        input.type = "file";
+        input.accept = "audio/*";
+        input.onchange = async () => {
+          const file = input.files?.[0];
+          if (!file) return;
+          await driveFromAudioFile(avatar, token, { modelId: MODEL_ID, file });
+        };
+        input.click();
+      });
+    </script>
+  </body>
+</html>

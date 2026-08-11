@@ -1,0 +1,17 @@
+{
+  "apiOrigin": "https://api.sumeruai.us",
+  "ttsId": 4,
+  "voiceId": "1463380813701120",
+  "styleId": "1419267182284587",
+  "modelId": "22086985642791624704",
+  "downloadLink": "https://oss.sumeruai.com/cn-south/files/newModels/2026/20260811/dt/9b05a562a04442558f67b18ec7ca231b",
+  "welcomeText": "Hello developer, welcome to use this encapsulated digital-human SDK. You are hearing this voice means the audio-video rendering, voice driving and lip-sync links are initialized successfully.",
+  "ttsPreviewText": "Hello developer, welcome to use this encapsulated digital-human SDK. You are hearing this voice means the audio-video rendering, voice driving and.",
+  "audioKey": "",
+  "emoteKey": "",
+  "fps": 30,
+  "audioFile": "./demo/assets/welcome.wav",
+  "emoteFile": "./demo/assets/welcome-emote.json",
+  "provisionedAt": "2026-08-11T01:39:50.819Z",
+  "note": "Open API /tts max 150 chars; Studio ttsId 4 is not clone voiceId"
+}

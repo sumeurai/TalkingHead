@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TalkingHead Web SDK — Demo</title>
+    <link rel="stylesheet" href="./demo/demo.css" />
+  </head>
+  <body>
+    <div class="page is-quick" id="page-root">
+      <header class="page__header">
+        <h1>TalkingHead Web SDK</h1>
+        <p>
+          Quick demo uses bundled <code>welcome.wav</code> +
+          <code>welcome-emote.json</code> (no API). Developer mode: your
+          accessKey, modelId, voiceId → TTS or audio +
+          <code>/audio-to-face/dt</code>. Reusable code in
+          <code>sdk/sumeru-drive.js</code>.
+          <a href="./docs/TalkingHead-Developer-Guide.md">Developer guide</a>
+        </p>
+      </header>
+
+      <div class="mode-tabs" role="tablist">
+        <button
+          type="button"
+          class="mode-tab is-active"
+          id="mode-quick"
+          data-mode="quick"
+        >
+          Quick demo
+        </button>
+        <button
+          type="button"
+          class="mode-tab"
+          id="mode-developer"
+          data-mode="developer"
+        >
+          Developer sandbox
+        </button>
+      </div>
+
+      <div class="workspace">
+        <div class="workspace__body">
+      <!-- Developer sandbox (forms only) -->
+      <section
+        class="panel mode-panel is-hidden"
+        id="panel-developer"
+        data-mode="developer"
+        autocomplete="off"
+      >
+        <h2>1 · API &amp; avatar</h2>
+        <div class="form-grid">
+          <div class="field" style="grid-column: 1 / -1">
+            <label for="api-env">API origin</label>
+            <input
+              id="api-env"
+              type="text"
+              inputmode="url"
+              autocomplete="off"
+              autocapitalize="off"
+              spellcheck="false"
+              placeholder="https://api.sumeruai.us"
+            />
+            <p class="field-hint">
+              Site origin only (no <code>/v1</code>) · e.g.
+              <code>https://api.sumeruai.us</code>
+            </p>
+          </div>
+          <div class="field">
+            <label for="access-key">accessKey</label>
+            <input
+              id="access-key"
+              type="text"
+              autocomplete="off"
+              autocapitalize="off"
+              spellcheck="false"
+              name="sumeru-dev-access-key"
+              placeholder="YOUR_ACCESS_KEY"
+            />
+            <p class="field-hint">Developer console · used with secretKey</p>
+          </div>
+          <div class="field">
+            <label for="secret-key">secretKey</label>
+            <input
+              id="secret-key"
+              type="password"
+              autocomplete="new-password"
+              autocapitalize="off"
+              spellcheck="false"
+              name="sumeru-dev-secret-key"
+              placeholder="YOUR_SECRET_KEY"
+            />
+            <p class="field-hint">Developer console · do not commit</p>
+          </div>
+          <div class="field">
+            <label for="access-token">accessToken</label>
+            <input
+              id="access-token"
+              type="text"
+              autocomplete="off"
+              autocapitalize="off"
+              spellcheck="false"
+              name="sumeru-dev-access-token"
+              placeholder="Optional — filled after Get accessToken"
+            />
+            <p class="field-hint">
+              <code>POST /v1/access/auth</code> → <code>data.accessToken</code>
+            </p>
+          </div>
+          <div class="field">
+            <label for="model-id">modelId</label>
+            <input
+              id="model-id"
+              type="text"
+              autocomplete="off"
+              autocapitalize="off"
+              spellcheck="false"
+              name="sumeru-dev-model-id"
+              placeholder="e.g. 22086744553208107008"
+            />
+            <p class="field-hint">
+              Required for <code>/audio-to-face/dt</code> · from Studio or
+              <code>GET /v1/avatars/models/{modelId}</code>
+            </p>
+          </div>
+          <div class="field">
+            <label for="voice-id">voiceId</label>
+            <input
+              id="voice-id"
+              type="text"
+              autocomplete="off"
+              autocapitalize="off"
+              spellcheck="false"
+              name="sumeru-dev-voice-id"
+              placeholder="e.g. 1463380813701120"
+            />
+            <p class="field-hint">
+              Clone voice for TTS · <code>POST /v1/tts</code> with
+              <code>voiceId</code>
+            </p>
+          </div>
+          <div class="field" style="grid-column: 1 / -1">
+            <label for="model-url">downloadLink (AvatarJS modelUrl)</label>
+            <textarea
+              id="model-url"
+              rows="2"
+              autocomplete="off"
+              autocapitalize="off"
+              spellcheck="false"
+              name="sumeru-dev-model-url"
+              placeholder="https://oss.sumeruai.com/.../newModels/.../dt/..."
+            ></textarea>
+            <p class="field-hint">
+              <code>GET /v1/avatars/models/{modelId}</code> →
+              <code>downloadLink</code> · or paste from Mugen3D Studio
+            </p>
+          </div>
+        </div>
+        <div class="btn-row">
+          <button type="button" class="btn btn-secondary" id="btn-auth">
+            Get accessToken
+          </button>
+          <button type="button" class="btn btn-primary" id="btn-load-model">
+            Load model
+          </button>
+        </div>
+
+        <h2 style="margin-top: 20px">2 · Drive lip-sync</h2>
+        <p class="panel-desc">
+          Same helpers as <code>sdk/sumeru-drive.js</code> — copy into your app.
+        </p>
+        <div class="form-grid">
+          <div class="field" style="grid-column: 1 / -1">
+            <label for="drive-text">Script (text → TTS → /dt)</label>
+            <textarea
+              id="drive-text"
+              rows="4"
+              autocomplete="off"
+              autocapitalize="off"
+              spellcheck="false"
+              name="sumeru-dev-drive-text"
+              placeholder="Enter text for TTS, then lip-sync and play"
+            ></textarea>
+          </div>
+        </div>
+        <div class="btn-row">
+          <button
+            type="button"
+            class="btn btn-primary"
+            id="btn-drive-text"
+            disabled
+          >
+            Text → TTS + /dt + Play
+          </button>
+        </div>
+        <label class="file-input">
+          Audio file (audio → /dt)
+          <input id="audio-file" type="file" accept="audio/*,.wav" />
+        </label>
+        <p class="field-hint" id="audio-file-hint">
+          Select WAV/audio, then click <strong>Audio → /dt + Play</strong>.
+        </p>
+        <div class="btn-row">
+          <button
+            type="button"
+            class="btn btn-secondary"
+            id="btn-drive-audio"
+            disabled
+          >
+            Audio → /dt + Play
+          </button>
+          <button type="button" class="btn btn-danger" id="btn-dev-stop" disabled>
+            Stop
+          </button>
+        </div>
+        <p class="controls-note">
+          Load model first. Badge (<code>Loading…</code> / <code>Ready</code> /
+          <code>Playing %</code>) syncs with the Log panel.
+        </p>
+      </section>
+
+      <div class="demo-main" id="demo-main">
+        <section
+          class="panel quick-panel mode-panel"
+          id="panel-quick"
+          data-mode="quick"
+        >
+          <h2>Quick demo · bundled assets</h2>
+          <p class="panel-desc">
+            Pre-provisioned model + welcome audio/lip-sync from
+            <code>demo/assets-cache.json</code> and <code>demo/assets/</code>.
+            No accessKey required.
+          </p>
+          <div class="cache-panel" id="quick-status"></div>
+          <div class="btn-row">
+            <button type="button" class="btn btn-primary" id="btn-quick-play" disabled>
+              Play welcome
+            </button>
+            <button
+              type="button"
+              class="btn btn-danger"
+              id="btn-quick-stop"
+              disabled
+            >
+              Stop
+            </button>
+          </div>
+        </section>
+
+        <section class="stage-wrap" id="quick-stage-wrap">
+          <span class="stage-badge" id="quick-stage-badge">Loading…</span>
+          <canvas id="quick-avatar-canvas"></canvas>
+        </section>
+
+        <section class="stage-wrap is-empty" id="dev-stage-wrap">
+          <span class="stage-badge" id="dev-stage-badge" hidden>Idle</span>
+        </section>
+      </div>
+        </div>
+
+        <aside class="panel log-panel" aria-label="Activity log">
+          <h2>Log</h2>
+          <div class="log" id="log"></div>
+        </aside>
+      </div>
+
+      <footer class="footer-links">
+        <a href="./docs/TalkingHead-Developer-Guide.md"
+          >TalkingHead Developer Guide</a
+        >
+        <a
+          href="https://api.sumeruai.us"
+          target="_blank"
+          rel="noopener noreferrer"
+          >Developer API</a
+        >
+      </footer>
+    </div>
+
+    <script type="module" src="./demo/demo.js"></script>
+  </body>
+</html>
