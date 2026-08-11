@@ -76,7 +76,7 @@ await driveFromText(avatar, token, {
 });
 ```
 
-See the [Developer Guide](./docs/TalkingHead-Developer-Guide.md) for the full Open API flow and Demo field map.
+See the [Developer Guide](./docs/TalkingHead-Developer-Guide.md) for the full Open API flow, [minimal copy checklist](./docs/TalkingHead-Developer-Guide.md#40-minimal-integration-files-to-copy), and [`sumeru-avatar.js` API](./docs/TalkingHead-Developer-Guide.md#74-sdk-sumeru-avatarjs).
 
 ## Repository layout
 

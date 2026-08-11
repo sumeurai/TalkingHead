@@ -11,11 +11,12 @@
         color: #eee;
         font-family: system-ui, sans-serif;
         padding: 16px;
+        text-align: center;
       }
       .stage {
         width: 360px;
         height: 480px;
-        margin: 16px 0;
+        margin: 16px auto;
         background: #000;
       }
       canvas {
@@ -41,15 +42,17 @@
     <script type="module">
       import { createAvatar } from "../sdk/sumeru-avatar.js";
       import { auth } from "../sdk/sumeru-atf-api.js";
-      import { driveFromText, driveFromAudioFile } from "../sdk/sumeru-drive.js";
+      import {
+        driveFromText,
+        driveFromAudioFile,
+      } from "../sdk/sumeru-drive.js";
 
       const ACCESS_KEY = "";
       const SECRET_KEY = "";
       const MODEL_URL = "";
       const MODEL_ID = "";
       const VOICE_ID = "";
-      const SCRIPT =
-        "Hello, this is a minimal TalkingHead lip-sync example.";
+      const SCRIPT = "Hello, this is a minimal TalkingHead lip-sync example.";
 
       const btnText = document.getElementById("drive-text");
       const btnAudio = document.getElementById("drive-audio");

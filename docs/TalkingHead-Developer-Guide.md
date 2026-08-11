@@ -13,6 +13,16 @@ This guide explains how to use the **SumeruAI Developer Open API** and the SDK i
 | **AvatarJS**      | CDN `static.sumeruai.com`                                              | Closed-source render core                                                   |
 | **Workers**       | This repo `workers/`                                                   | `decoderWorker.js`, `rendererWorker.js` must be served from the same origin |
 
+### 1.1 SDK module responsibilities
+
+| Module                  | Responsibility                                | Typical imports                                            |
+| ----------------------- | --------------------------------------------- | ---------------------------------------------------------- |
+| `sdk/sumeru-atf-api.js` | HTTP: auth, TTS, `/audio-to-face/dt`, helpers | `auth`, `audioToFaceDt`, `synthesizeTtsLong`               |
+| `sdk/sumeru-avatar.js`  | Load AvatarJS, mount canvas, playback control | `createAvatar`, `cloneDrivePayload`                        |
+| `sdk/sumeru-drive.js`   | Build drive payload + play orchestration      | `driveFromText`, `driveFromAudioFile`, `playDriveOnAvatar` |
+
+**Rule of thumb:** use `createAvatar()` for rendering; prefer `sumeru-drive.js` for the auth → TTS → `/dt` → play pipeline. Call `avatar.drive()` directly only when you already have a drive payload or need custom streaming.
+
 ---
 
 ## 2. API base URL
@@ -62,6 +72,31 @@ The same calls live in **`sdk/sumeru-drive.js`** for copy-paste into your app. *
 ---
 
 ## 4. Lip-sync flow (what developers integrate)
+
+### 4.0 Minimal integration (files to copy)
+
+Copy these from this repo into your app (see `examples/minimal.html`):
+
+```
+your-app/
+├── index.html                 ← start from examples/minimal.html
+├── sdk/
+│   ├── sumeru-atf-api.js      ← required for API calls
+│   ├── sumeru-avatar.js       ← required for canvas / playback
+│   └── sumeru-drive.js        ← optional if you build drive data yourself
+└── workers/
+    ├── decoderWorker.js       ← required — same origin as the page
+    └── rendererWorker.js
+```
+
+**Checklist**
+
+- [ ] Serve over HTTP (`npx serve .`) — **`file://` will break Workers and ES modules**
+- [ ] Set `workerBase: "./workers/"` (trailing slash optional; SDK normalizes it)
+- [ ] Wait for `onReady` (or `avatar.isReady`) before calling `avatar.drive()`
+- [ ] Call `avatar.unlockAudio()` inside a **user gesture** before first play (or use `sumeru-drive.js`, which calls it for you)
+- [ ] Call `avatar.stop()` before the next clip; call `avatar.destroy()` when leaving the page or swapping models
+- [ ] Use a **dedicated `<canvas>`** per avatar instance — do not reuse a canvas after `transferControlToOffscreen` (see §7.5)
 
 You already have a TalkingHead **modelId**, **downloadLink**, and clone **voiceId** (from Studio or your backend). In the browser:
 
@@ -177,6 +212,16 @@ Copy the JSON output into the Developer sandbox form manually. Do not commit tok
 
 ## 7. Code integration
 
+| Section | Topic                                          |
+| ------- | ---------------------------------------------- |
+| §7.0    | `sumeru-drive.js` — TTS / `/dt` / play helpers |
+| §7.1    | Bundled Quick demo (no API)                    |
+| §7.2    | `avatar.drive()` payload fields                |
+| §7.3    | Lifecycle, callbacks, playback order           |
+| §7.4    | **`sumeru-avatar.js` module API**              |
+| §7.5    | Runtime constraints (canvas, Workers, CDN)     |
+| §7.6    | Advanced — `avatar.raw`, direct `receiveData`  |
+
 ### 7.0 `sdk/sumeru-drive.js` (recommended)
 
 | Export                                                               | Description                          |
@@ -269,6 +314,92 @@ avatar.stop();
 
 The Demo calls `avatar.stop()` when switching **Quick demo ↔ Developer sandbox**; the badge returns to **Ready**.
 
+**Lifecycle sequence**
+
+```
+createAvatar()
+  → onReady          (model worker up — safe to drive)
+  → unlockAudio()    (user click — required for audible playback)
+  → drive(payload)   (cloneDrivePayload runs internally)
+  → onAnimationReady (SDK calls startPlay2 — lip-sync + audio aligned)
+  → onProgress       (0–100 during playback)
+  → onPlayEnd        (visual track finished)
+  → onAudioEnd       (audio track finished — may differ slightly from onPlayEnd)
+```
+
+When using `sumeru-drive.js`, `playDriveOnAvatar` runs **`unlockAudio()` → `stop()` → `drive(false)`** in that order before each clip.
+
+Recommended call order when managing playback yourself:
+
+1. Wait for `onReady`
+2. On user click: `unlockAudio()`
+3. Before a new clip: `stop()` (optional if nothing is playing)
+4. `drive(driveData, false)`
+5. On route change / unmount: `destroy()`
+
+### 7.4 `sdk/sumeru-avatar.js`
+
+Thin wrapper around [AvatarJS](https://static.sumeruai.com/new-avatars/AvatarJS.js) (CDN) with local Workers from this repo.
+
+**Module exports**
+
+| Export                    | Description                                                                                                                                                                                        |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `AVATAR_JS_CDN`           | CDN URL for AvatarJS (`https://static.sumeruai.com/new-avatars/AvatarJS.js`)                                                                                                                       |
+| `loadAvatarJS()`          | `import()` the CDN module once; returns `Promise<module>`. Normally you do **not** call this — `createAvatar()` does it for you. Useful for preloading AvatarJS before mounting.                   |
+| `cloneDrivePayload(data)` | Deep-clones `audioArray` before `receiveData`. AvatarJS detaches the underlying `ArrayBuffer` on decode — reuse the same object without cloning throws. `avatar.drive()` calls this automatically. |
+| `createAvatar(opts)`      | Load model, mount Workers on `canvas`, return an `AvatarHandle`. See §7.3 for callbacks.                                                                                                           |
+
+**`createAvatar(opts)` parameters**
+
+| Option             | Required | Description                                                |
+| ------------------ | -------- | ---------------------------------------------------------- |
+| `canvas`           | Yes      | `HTMLCanvasElement` to render into                         |
+| `modelUrl`         | Yes      | `downloadLink` from `GET /v1/avatars/models/{modelId}`     |
+| `workerBase`       | No       | Directory containing both workers (default `"./workers/"`) |
+| `onReady`          | No       | Model worker loaded — enable UI / start driving            |
+| `onAnimationReady` | No       | Emote decoded; wrapper auto-calls `startPlay2()`           |
+| `onPlayEnd`        | No       | Visual playback finished                                   |
+| `onProgress`       | No       | `(percent: number)` 0–100                                  |
+| `onAudioEnd`       | No       | Audio track finished                                       |
+| `onError`          | No       | `(err)` load / decode / render failure                     |
+
+**`AvatarHandle` (return value of `createAvatar`)**
+
+| Member                 | Type   | Description                                                                           |
+| ---------------------- | ------ | ------------------------------------------------------------------------------------- |
+| `drive(data, append?)` | method | Feed ATF payload; throws if not ready. See §7.2 for fields. Default `append = false`. |
+| `stop()`               | method | Stop lip-sync and audio immediately                                                   |
+| `unlockAudio()`        | method | Resume suspended `AudioContext` (call inside user gesture)                            |
+| `destroy()`            | method | `stopPlay` + `close`, clear internal instance                                         |
+| `isReady`              | getter | `true` after `onReady`                                                                |
+| `raw`                  | getter | Underlying AvatarJS instance — escape hatch only (see §7.6)                           |
+
+Cross-reference: drive payload fields → §7.2; callbacks and examples → §7.3; high-level play helpers → §7.0 `sumeru-drive.js`.
+
+### 7.5 Runtime constraints
+
+| Topic                       | Guidance                                                                                                                                                                                                                                                                   |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **HTTP only**               | ES modules and Worker scripts require a static server (`npx serve .`). Opening `index.html` via `file://` fails.                                                                                                                                                           |
+| **Worker same-origin**      | `decoderWorker.js` and `rendererWorker.js` must be served from the **same origin** as your page. Pass their directory via `workerBase`.                                                                                                                                    |
+| **AvatarJS CDN**            | Render core loads from `static.sumeruai.com`. Offline or air-gapped deployments need a separate arrangement — not supported by this demo.                                                                                                                                  |
+| **One canvas per instance** | Each `createAvatar({ canvas })` binds that canvas to an offscreen transfer inside AvatarJS. **Do not reuse** the same canvas for a second instance without replacing the DOM node. The Demo uses separate `#quick-avatar-canvas` and `#dev-avatar-canvas` for this reason. |
+| **Swapping models**         | Prefer `destroy()` on the old handle, insert a fresh `<canvas>`, then `createAvatar()` again.                                                                                                                                                                              |
+| **Replay same payload**     | Safe via `avatar.drive()` — uses `cloneDrivePayload`. Direct `avatar.raw.receiveData(sameObject)` without cloning will throw after the first play.                                                                                                                         |
+| **User gesture**            | Autoplay policies block audio until `unlockAudio()` runs inside a click / tap handler.                                                                                                                                                                                     |
+| **Cleanup**                 | Call `destroy()` on SPA route leave, modal close, or hot-swapping avatars to release Workers.                                                                                                                                                                              |
+
+### 7.6 Advanced (`avatar.raw`)
+
+The SDK intentionally exposes a small surface. Use **`avatar.raw`** only when you need AvatarJS APIs not wrapped here (e.g. internal debug hooks).
+
+- **`avatar.raw`** — the AvatarJS constructor instance passed `{ canvas }`, model URL, and worker URLs.
+- **Direct `receiveData`** — if you bypass `avatar.drive()`, clone audio bytes yourself: `new Uint8Array(buf.slice(0))` (same pattern as Mugen3D Studio `useAtfChat`).
+- **`loadAvatarJS()` preload** — optional: `await loadAvatarJS()` during app boot to hide CDN import latency before the user opens the avatar view.
+
+Do not depend on undocumented AvatarJS methods in production integrations unless SumeruAI documents them — prefer `createAvatar` + `sumeru-drive.js`.
+
 ---
 
 ## 8. Local development
@@ -301,6 +432,18 @@ Direct browser calls to `api.sumeruai.us` / OSS need server-side CORS for your o
 **TTS length limit?**  
 ≤150 characters per chunk; `synthesizeTtsLong` splits on sentence boundaries.
 
+**`Avatar not ready — wait for onReady`?**  
+You called `avatar.drive()` before the model worker finished loading. Wait for `onReady` or check `avatar.isReady`.
+
+**Canvas blank after switching tabs / reloading model?**  
+The canvas may already be transferred offscreen. Use a **new** `<canvas>` element (or a separate canvas per mode, as in the Demo). See §7.5.
+
+**`drive audioArray buffer is detached`?**  
+You replayed drive data without cloning. Use `avatar.drive()` (not raw `receiveData`) or call `cloneDrivePayload()` first.
+
+**Can I skip `sumeru-drive.js`?**  
+Yes. Build the payload with `sumeru-atf-api.js` (`auth`, `synthesizeTtsLong`, `audioToFaceDt`) and call `avatar.unlockAudio()` + `avatar.drive()` yourself.
+
 ---
 
 ## 10. Further reading
@@ -312,6 +455,6 @@ Direct browser calls to `api.sumeruai.us` / OSS need server-side CORS for your o
 
 ## Changelog
 
-| Date       | Notes           |
-| ---------- | --------------- |
-| 2026-08-11 | Developer-Guide |
+| Date       | Notes                   |
+| ---------- | ----------------------- |
+| 2026-08-11 | Initial Developer Guide |
