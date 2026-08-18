@@ -1,4 +1,5 @@
 import { createAvatar } from "../sdk/sumeru-avatar.js";
+import { setSiteOrigin } from "../sdk/sumeru-event-stats.js";
 import {
   auth,
   pollModel,
@@ -50,6 +51,8 @@ const bundledAudioUrl =
   ) || DEFAULT_AUDIO_FILE;
 
 const DEFAULT_API_ORIGIN_HINT = "https://api.sumeruai.us";
+const demoSiteOrigin = pickConfigString(localConfig.siteOrigin);
+if (demoSiteOrigin) setSiteOrigin(demoSiteOrigin);
 
 const $ = (sel) => document.querySelector(sel);
 

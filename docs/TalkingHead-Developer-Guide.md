@@ -17,9 +17,10 @@ This guide explains how to use the **SumeruAI Developer Open API** and the SDK i
 
 | Module                  | Responsibility                                | Typical imports                                            |
 | ----------------------- | --------------------------------------------- | ---------------------------------------------------------- |
-| `sdk/sumeru-atf-api.js` | HTTP: auth, TTS, `/audio-to-face/dt`, helpers | `auth`, `audioToFaceDt`, `synthesizeTtsLong`               |
-| `sdk/sumeru-avatar.js`  | Load AvatarJS, mount canvas, playback control | `createAvatar`, `cloneDrivePayload`                        |
-| `sdk/sumeru-drive.js`   | Build drive payload + play orchestration      | `driveFromText`, `driveFromAudioFile`, `playDriveOnAvatar` |
+| `sdk/sumeru-atf-api.js`     | HTTP: auth, TTS, `/audio-to-face/dt`, helpers | `auth`, `audioToFaceDt`, `synthesizeTtsLong`               |
+| `sdk/sumeru-avatar.js`      | Load AvatarJS, mount canvas, playback control | `createAvatar`, `cloneDrivePayload`                        |
+| `sdk/sumeru-drive.js`       | Build drive payload + play orchestration      | `driveFromText`, `driveFromAudioFile`, `playDriveOnAvatar` |
+| `sdk/sumeru-event-stats.js` | C-end funnel ping (no token)                  | `incrementEventStat`, `setSiteOrigin`                      |
 
 **Rule of thumb:** use `createAvatar()` for rendering; prefer `sumeru-drive.js` for the auth → TTS → `/dt` → play pipeline. Call `avatar.drive()` directly only when you already have a drive payload or need custom streaming.
 
@@ -83,6 +84,7 @@ your-app/
 ├── sdk/
 │   ├── sumeru-atf-api.js      ← required for API calls
 │   ├── sumeru-avatar.js       ← required for canvas / playback
+│   ├── sumeru-event-stats.js  ← required (imported by sumeru-avatar.js)
 │   └── sumeru-drive.js        ← optional if you build drive data yourself
 └── workers/
     ├── decoderWorker.js       ← required — same origin as the page
@@ -363,6 +365,8 @@ Thin wrapper around [AvatarJS](https://static.sumeruai.com/new-avatars/AvatarJS.
 | `onProgress`       | No       | `(percent: number)` 0–100                                  |
 | `onAudioEnd`       | No       | Audio track finished                                       |
 | `onError`          | No       | `(err)` load / decode / render failure                     |
+| `telemetry`        | No       | Default `true`. On ready, ping install-success (`eventType=2`). Set `false` to disable. |
+| `siteOrigin`       | No       | C-end site for the ping. Prod: `https://www.sumeruai.us`. Test: `https://overseas.sumeruai.com`. |
 
 **`AvatarHandle` (return value of `createAvatar`)**
 
@@ -399,6 +403,27 @@ The SDK intentionally exposes a small surface. Use **`avatar.raw`** only when yo
 - **`loadAvatarJS()` preload** — optional: `await loadAvatarJS()` during app boot to hide CDN import latency before the user opens the avatar view.
 
 Do not depend on undocumented AvatarJS methods in production integrations unless SumeruAI documents them — prefer `createAvatar` + `sumeru-drive.js`.
+
+### 7.7 Usage ping (`sdk/sumeru-event-stats.js`)
+
+On `createAvatar` ready, the SDK silently calls `POST /web-api/portrait/event-stats/increment` (**no token**):
+
+```json
+{ "bizType": "10", "eventType": "2", "eventKey": "sumeurai/TalkingHead" }
+```
+
+| | URL |
+|--|-----|
+| Prod | `https://www.sumeruai.us` (SDK default) |
+| Test | `https://overseas.sumeruai.com` |
+
+- `eventType=2` = install / run success (count). Do **not** report `4` or `5`.
+- Failure is ignored — playback is not blocked.
+- **Once per browser profile** on this site origin (`localStorage`). Refresh / new tabs do not increment again. Chrome vs Firefox, or a different site origin, counts as a new browser.
+- The increment API has no client-id field — uniqueness is client-side only. `eventKey` stays `sumeurai/TalkingHead`.
+- Disable: `createAvatar({ telemetry: false })`.
+- Point at test: `createAvatar({ siteOrigin: "https://overseas.sumeruai.com" })` or `config.local.js` `siteOrigin` for the Demo.
+- Maintainer replay: `node scripts/ping-event-stats.mjs` (defaults to test, 5 times).
 
 ---
 
@@ -455,6 +480,7 @@ Yes. Build the payload with `sumeru-atf-api.js` (`auth`, `synthesizeTtsLong`, `a
 
 ## Changelog
 
-| Date       | Notes                   |
-| ---------- | ----------------------- |
-| 2026-08-11 | Initial Developer Guide |
+| Date       | Notes                                                                 |
+| ---------- | --------------------------------------------------------------------- |
+| 2026-08-11 | Initial Developer Guide                                               |
+| 2026-08-18 | §7.7 usage ping (`bizType=10`, `eventType=2`, no token)               |

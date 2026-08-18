@@ -3,7 +3,7 @@
 Browser runtime demo for **SumeruAI TalkingHead** digital humans. Integrates:
 
 - **Developer Open API** — auth, voice clone, model, TTS, `POST /audio-to-face/dt`
-- **This repo SDK** — `sdk/sumeru-atf-api.js`, `sdk/sumeru-avatar.js`, `sdk/sumeru-drive.js`
+- **This repo SDK** — `sdk/sumeru-atf-api.js`, `sdk/sumeru-avatar.js`, `sdk/sumeru-drive.js`, `sdk/sumeru-event-stats.js`
 - **AvatarJS** (CDN render core) + **local Workers** (`workers/`)
 
 **Start here:** [TalkingHead Developer Guide](./docs/TalkingHead-Developer-Guide.md)
@@ -117,7 +117,7 @@ TalkingHead/
 │   └── assets/             # welcome.wav, welcome-emote.json
 ├── examples/
 │   └── minimal.html        # Minimal integration template (copy into your app)
-├── sdk/                    # sumeru-atf-api, sumeru-avatar, sumeru-drive
+├── sdk/                    # atf-api, avatar, drive, event-stats
 ├── workers/                # decoderWorker.js, rendererWorker.js
 ├── scripts/provision-assets.mjs
 └── docs/

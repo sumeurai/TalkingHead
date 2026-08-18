@@ -2,6 +2,8 @@
  * Thin wrapper around AvatarJS (CDN) with local same-directory Workers.
  */
 
+import { reportAvatarReady, setSiteOrigin } from "./sumeru-event-stats.js";
+
 export const AVATAR_JS_CDN =
   "https://static.sumeruai.com/new-avatars/AvatarJS.js";
 
@@ -54,6 +56,8 @@ export function cloneDrivePayload(data) {
  * @param {(err: unknown) => void} [opts.onError] - AvatarJS `OnError`
  * @param {(percent: number) => void} [opts.onProgress] - AvatarJS `updateSeekBar`: playback progress 0–100
  * @param {() => void} [opts.onAudioEnd] - AvatarJS `audioEnd`: audio track finished
+ * @param {boolean} [opts.telemetry=true] - ping eventType=2 (install success) on ready
+ * @param {string} [opts.siteOrigin] - C-end site origin (prod https://www.sumeruai.us)
  */
 export async function createAvatar({
   canvas,
@@ -65,6 +69,8 @@ export async function createAvatar({
   onError,
   onProgress,
   onAudioEnd,
+  telemetry = true,
+  siteOrigin,
 }) {
   const base = workerBase.endsWith("/") ? workerBase : `${workerBase}/`;
   const decoderWorkerUrl = `${base}decoderWorker.js`;
@@ -80,6 +86,10 @@ export async function createAvatar({
     { canvas },
     () => {
       ready = true;
+      if (telemetry) {
+        if (siteOrigin) setSiteOrigin(siteOrigin);
+        reportAvatarReady();
+      }
       onReady?.();
     },
     () => {
