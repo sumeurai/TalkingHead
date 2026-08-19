@@ -409,7 +409,19 @@ Do not depend on undocumented AvatarJS methods in production integrations unless
 On `createAvatar` ready, the SDK silently calls `POST /web-api/portrait/event-stats/increment` (**no token**):
 
 ```json
-{ "bizType": "10", "eventType": "2", "eventKey": "sumeurai/TalkingHead" }
+{
+  "bizType": "10",
+  "eventType": "2",
+  "eventKey": "sdk/talkinghead/install_success",
+  "product": "talkinghead",
+  "repo": "sumeurai/TalkingHead",
+  "anonId": "<localStorage browser id>",
+  "fromPage": "https://example.com/app",
+  "sdkVersion": "1.0.0",
+  "version": "1.0.0",
+  "apiName": "createAvatar",
+  "latencyMs": 1840
+}
 ```
 
 | | URL |
@@ -417,10 +429,11 @@ On `createAvatar` ready, the SDK silently calls `POST /web-api/portrait/event-st
 | Prod | `https://www.sumeruai.us` (SDK default) |
 | Test | `https://overseas.sumeruai.com` |
 
-- `eventType=2` = install / run success (count). Do **not** report `4` or `5`.
+- `eventType=2` = install / run success. Do **not** report `4` or `5`.
+- `fromPage` is `origin + pathname` only (no query). `anonId` is a per-browser uuid on this origin.
+- Not sent (Web SDK cannot fill them): `packageName`, `unityVersion`, `userId`, `keyId`, `plan`, `callCount7d`, `machineId`.
 - Failure is ignored — playback is not blocked.
-- **Once per browser profile** on this site origin (`localStorage`). Refresh / new tabs do not increment again. Chrome vs Firefox, or a different site origin, counts as a new browser.
-- The increment API has no client-id field — uniqueness is client-side only. `eventKey` stays `sumeurai/TalkingHead`.
+- **Once per browser profile** on this site origin (`localStorage`). Refresh / new tabs do not increment again.
 - Disable: `createAvatar({ telemetry: false })`.
 - Point at test: `createAvatar({ siteOrigin: "https://overseas.sumeruai.com" })` or `config.local.js` `siteOrigin` for the Demo.
 - Maintainer replay: `node scripts/ping-event-stats.mjs` (defaults to test, 5 times).
@@ -484,3 +497,4 @@ Yes. Build the payload with `sumeru-atf-api.js` (`auth`, `synthesizeTtsLong`, `a
 | ---------- | --------------------------------------------------------------------- |
 | 2026-08-11 | Initial Developer Guide                                               |
 | 2026-08-18 | §7.7 usage ping (`bizType=10`, `eventType=2`, no token)               |
+| 2026-08-19 | §7.7 install_success payload (`anonId`, `fromPage`, `sdkVersion`, …)  |

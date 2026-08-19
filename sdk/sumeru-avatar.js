@@ -72,6 +72,7 @@ export async function createAvatar({
   telemetry = true,
   siteOrigin,
 }) {
+  const startedAt = Date.now();
   const base = workerBase.endsWith("/") ? workerBase : `${workerBase}/`;
   const decoderWorkerUrl = `${base}decoderWorker.js`;
   const rendererWorkerUrl = `${base}rendererWorker.js`;
@@ -88,7 +89,7 @@ export async function createAvatar({
       ready = true;
       if (telemetry) {
         if (siteOrigin) setSiteOrigin(siteOrigin);
-        reportAvatarReady();
+        reportAvatarReady({ latencyMs: Date.now() - startedAt });
       }
       onReady?.();
     },

@@ -3,8 +3,7 @@
  * No Authorization — guests increment by count.
  * Do not report eventType 4 / 5 (backend derives those from usage).
  *
- * Uniqueness is per browser profile + site origin (`localStorage`).
- * The increment API has no client-id field, so we only send once from this browser.
+ * Uniqueness: localStorage once per browser + `anonId` for server-side distinct.
  */
 
 export const SITE_ORIGINS = {
@@ -12,10 +11,11 @@ export const SITE_ORIGINS = {
   test: "https://overseas.sumeruai.com",
 };
 
-/** TalkingHead on the funnel page. */
 export const TALKINGHEAD_BIZ_TYPE = "10";
-/** GitHub owner/repo. */
-export const TALKINGHEAD_EVENT_KEY = "sumeurai/TalkingHead";
+export const TALKINGHEAD_PRODUCT = "talkinghead";
+export const TALKINGHEAD_REPO = "sumeurai/TalkingHead";
+export const TALKINGHEAD_EVENT_KEY = "sdk/talkinghead/install_success";
+export const SDK_VERSION = "1.0.0";
 
 export const EVENT_TYPE = {
   openLink: "0",
@@ -82,30 +82,80 @@ function markReported() {
   storageSet(STORAGE_REPORTED, "1");
 }
 
+function getFromPage() {
+  try {
+    if (typeof location === "undefined") return "";
+    return `${location.origin}${location.pathname}`.slice(0, 128);
+  } catch {
+    return "";
+  }
+}
+
+function omitEmpty(obj) {
+  return Object.fromEntries(
+    Object.entries(obj).filter(([, value]) => {
+      if (value === "" || value == null) return false;
+      if (typeof value === "number" && !Number.isFinite(value)) return false;
+      return true;
+    }),
+  );
+}
+
+/**
+ * Body fields this Web SDK can fill. Not sent: packageName, unityVersion,
+ * userId, keyId, plan, callCount7d, machineId, allBlank.
+ */
+export function buildInstallSuccessPayload({
+  eventType = EVENT_TYPE.installSuccess,
+  eventKey = TALKINGHEAD_EVENT_KEY,
+  bizType = TALKINGHEAD_BIZ_TYPE,
+  apiName = "createAvatar",
+  fromPage,
+  latencyMs,
+} = {}) {
+  const page = fromPage ?? getFromPage();
+  const ms = Number.isFinite(latencyMs) ? Math.max(0, Math.round(latencyMs)) : undefined;
+  return omitEmpty({
+    bizType,
+    eventType,
+    eventKey,
+    product: TALKINGHEAD_PRODUCT,
+    repo: TALKINGHEAD_REPO,
+    anonId: getBrowserId(),
+    fromPage: page,
+    sdkVersion: SDK_VERSION,
+    version: SDK_VERSION,
+    apiName,
+    latencyMs: ms,
+  });
+}
+
 /**
  * Increment today's event count. Never throws.
  *
  * @param {object} [opts]
- * @param {string} [opts.eventType="2"]
- * @param {string} [opts.eventKey]
- * @param {string} [opts.bizType]
- * @param {boolean} [opts.oncePerBrowser=true] — one ping per browser profile (localStorage)
+ * @param {boolean} [opts.oncePerBrowser=true]
+ * @param {number} [opts.latencyMs]
+ * @param {string} [opts.fromPage]
+ * @param {string} [opts.apiName]
  */
-export async function incrementEventStat({
-  eventType = EVENT_TYPE.installSuccess,
-  eventKey = TALKINGHEAD_EVENT_KEY,
-  bizType = TALKINGHEAD_BIZ_TYPE,
-  oncePerBrowser = true,
-} = {}) {
+export async function incrementEventStat(opts = {}) {
+  const {
+    oncePerBrowser = true,
+    ...payloadOpts
+  } = opts;
+
   if (oncePerBrowser && alreadyReported()) {
     return { skipped: true, browserId: getBrowserId() };
   }
+
+  const body = buildInstallSuccessPayload(payloadOpts);
 
   try {
     const res = await fetch(getEventStatsUrl(), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ bizType, eventType, eventKey }),
+      body: JSON.stringify(body),
     });
     const text = await res.text();
     let json = null;
@@ -120,17 +170,20 @@ export async function incrementEventStat({
       status: res.status,
       json,
       text,
-      browserId: getBrowserId(),
+      body,
+      browserId: body.anonId,
     };
   } catch (err) {
-    return { ok: false, error: err, browserId: getBrowserId() };
+    return { ok: false, error: err, body, browserId: body.anonId };
   }
 }
 
 /** `createAvatar` onReady — install-success (eventType 2), once per browser. */
-export function reportAvatarReady() {
+export function reportAvatarReady({ latencyMs } = {}) {
   void incrementEventStat({
     eventType: EVENT_TYPE.installSuccess,
     oncePerBrowser: true,
+    apiName: "createAvatar",
+    latencyMs,
   });
 }

@@ -8,12 +8,10 @@
 
 import {
   SITE_ORIGINS,
-  TALKINGHEAD_BIZ_TYPE,
-  TALKINGHEAD_EVENT_KEY,
-  EVENT_TYPE,
   setSiteOrigin,
   getEventStatsUrl,
   incrementEventStat,
+  buildInstallSuccessPayload,
 } from "../sdk/sumeru-event-stats.js";
 
 const siteOrigin = (
@@ -26,11 +24,11 @@ setSiteOrigin(siteOrigin);
 console.log("POST", getEventStatsUrl());
 console.log(
   JSON.stringify(
-    {
-      bizType: TALKINGHEAD_BIZ_TYPE,
-      eventType: EVENT_TYPE.installSuccess,
-      eventKey: TALKINGHEAD_EVENT_KEY,
-    },
+    buildInstallSuccessPayload({
+      apiName: "createAvatar",
+      fromPage: "cli/ping-event-stats",
+      latencyMs: 0,
+    }),
     null,
     2,
   ),
@@ -39,8 +37,10 @@ console.log(
 let ok = 0;
 for (let i = 1; i <= times; i += 1) {
   const result = await incrementEventStat({
-    eventType: EVENT_TYPE.installSuccess,
     oncePerBrowser: false,
+    apiName: "createAvatar",
+    fromPage: "cli/ping-event-stats",
+    latencyMs: 0,
   });
   const detail = result.json ?? result.text ?? result.error?.message ?? result;
   console.log(`[${i}/${times}] status=${result.status ?? "n/a"}`, detail);
