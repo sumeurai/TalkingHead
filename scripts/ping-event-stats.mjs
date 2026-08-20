@@ -1,25 +1,27 @@
 /**
- * Hit C-end event-stats from the SDK helper (no token).
- * Default: test site, eventType=2, 5 times.
+ * Hit Open API event-stats from the SDK helper (no token).
+ * Default: https://api.sumeruai.us/v1/event-stats/increment, 5 times.
  *
  *   node scripts/ping-event-stats.mjs
- *   SITE_ORIGIN=https://www.sumeruai.us TIMES=1 node scripts/ping-event-stats.mjs
+ *   API_ORIGIN=https://api.sumeruai.us TIMES=1 node scripts/ping-event-stats.mjs
  */
 
 import {
-  SITE_ORIGINS,
-  setSiteOrigin,
+  API_ORIGINS,
+  setApiOrigin,
   getEventStatsUrl,
   incrementEventStat,
   buildInstallSuccessPayload,
 } from "../sdk/sumeru-event-stats.js";
 
-const siteOrigin = (
-  process.env.SITE_ORIGIN || SITE_ORIGINS.test
+const apiOrigin = (
+  process.env.API_ORIGIN ||
+  process.env.SITE_ORIGIN ||
+  API_ORIGINS.prod
 ).replace(/\/$/, "");
 const times = Math.max(1, Number(process.env.TIMES || 5));
 
-setSiteOrigin(siteOrigin);
+setApiOrigin(apiOrigin);
 
 console.log("POST", getEventStatsUrl());
 console.log(

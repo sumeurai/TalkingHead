@@ -57,7 +57,7 @@ export function cloneDrivePayload(data) {
  * @param {(percent: number) => void} [opts.onProgress] - AvatarJS `updateSeekBar`: playback progress 0–100
  * @param {() => void} [opts.onAudioEnd] - AvatarJS `audioEnd`: audio track finished
  * @param {boolean} [opts.telemetry=true] - ping eventType=2 (install success) on ready
- * @param {string} [opts.siteOrigin] - C-end site origin (prod https://www.sumeruai.us)
+ * @param {string} [opts.siteOrigin] - API origin for the ping (default https://api.sumeruai.us)
  */
 export async function createAvatar({
   canvas,

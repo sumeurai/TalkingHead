@@ -4,6 +4,6 @@
 export default {
   emoteFile: "./demo/assets/welcome-emote.json",
   audioFile: "./demo/assets/welcome.wav",
-  // C-end funnel ping (createAvatar onReady). Default: https://www.sumeruai.us
-  // siteOrigin: "https://overseas.sumeruai.com",
+  // Event ping API origin (createAvatar onReady). Default: https://api.sumeruai.us
+  // siteOrigin: "https://api.sumeruai.us",
 };

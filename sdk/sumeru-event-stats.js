@@ -1,15 +1,17 @@
 /**
- * C-end funnel ping: POST /web-api/portrait/event-stats/increment
+ * Open API funnel ping: POST /v1/event-stats/increment
  * No Authorization — guests increment by count.
  * Do not report eventType 4 / 5 (backend derives those from usage).
  *
  * Uniqueness: localStorage once per browser + `anonId` for server-side distinct.
  */
 
-export const SITE_ORIGINS = {
-  prod: "https://www.sumeruai.us",
-  test: "https://overseas.sumeruai.com",
+export const API_ORIGINS = {
+  prod: "https://api.sumeruai.us",
 };
+
+/** @deprecated use API_ORIGINS */
+export const SITE_ORIGINS = API_ORIGINS;
 
 export const TALKINGHEAD_BIZ_TYPE = "10";
 export const TALKINGHEAD_PRODUCT = "talkinghead";
@@ -27,20 +29,30 @@ export const EVENT_TYPE = {
 const STORAGE_BROWSER_ID = "sumeru-th-browser-id";
 const STORAGE_REPORTED = "sumeru-th-event-2";
 
-let siteOrigin = SITE_ORIGINS.prod;
+let apiOrigin = API_ORIGINS.prod;
 
-/** @param {string} origin — site origin, e.g. https://www.sumeruai.us */
-export function setSiteOrigin(origin) {
+/** @param {string} origin — API origin, e.g. https://api.sumeruai.us */
+export function setApiOrigin(origin) {
   if (!origin) return;
-  siteOrigin = origin.replace(/\/$/, "");
+  apiOrigin = origin.replace(/\/$/, "").replace(/\/v1$/i, "");
 }
 
+/** @deprecated use setApiOrigin */
+export function setSiteOrigin(origin) {
+  setApiOrigin(origin);
+}
+
+export function getApiOrigin() {
+  return apiOrigin;
+}
+
+/** @deprecated use getApiOrigin */
 export function getSiteOrigin() {
-  return siteOrigin;
+  return apiOrigin;
 }
 
 export function getEventStatsUrl() {
-  return `${siteOrigin}/web-api/portrait/event-stats/increment`;
+  return `${apiOrigin}/v1/event-stats/increment`;
 }
 
 function storageGet(key) {
