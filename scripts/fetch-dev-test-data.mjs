@@ -7,11 +7,11 @@
  *   $env:SECRET_KEY="YOUR_SECRET_KEY"
  *   $env:MODEL_ID="YOUR_MODEL_ID"
  *   $env:VOICE_ID="YOUR_VOICE_ID"
- *   $env:API_ORIGIN="https://api.sumeruai.us"   # optional
+ *   $env:API_ORIGIN="https://overseas.sumeruai.com"   # optional
  *   node scripts/fetch-dev-test-data.mjs
  */
 
-const API_ORIGIN = process.env.API_ORIGIN ?? "https://api.sumeruai.us";
+const API_ORIGIN = process.env.API_ORIGIN ?? "https://overseas.sumeruai.com";
 const API_BASE = `${API_ORIGIN.replace(/\/$/, "")}/v1`;
 const ACCESS_KEY = process.env.ACCESS_KEY ?? "";
 const SECRET_KEY = process.env.SECRET_KEY ?? "";
@@ -78,7 +78,12 @@ async function main() {
     const m = modelRes.data;
     console.log("modelId:", MODEL_ID);
     console.log("model status:", m.status);
-    console.log("downloadLink:", m.downloadLink ?? "(pending — poll until status=1)");
+    const files = Array.isArray(m.files) ? m.files : [];
+    console.log("files:", files.length ? files.map((f) => f.name).join(", ") : "(none — poll until status=1)");
+    for (const file of files) {
+      console.log(`  ${file.name}: ${file.url}`);
+    }
+    console.log("downloadLink (24h temp, do not use as createAvatar modelUrl):", m.downloadLink ?? "(pending)");
   }
   console.log("---");
 
@@ -101,7 +106,8 @@ async function main() {
         accessToken: token,
         modelId: MODEL_ID,
         voiceId: VOICE_ID,
-        downloadLink: modelRes.data?.downloadLink ?? "",
+        modelUrl: "(host files[] on YOUR server, then paste that directory URL)",
+        files: modelRes.data?.files ?? [],
       },
       null,
       2,

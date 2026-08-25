@@ -28,12 +28,13 @@ This guide explains how to use the **SumeruAI Developer Open API** and the SDK i
 
 ## 2. API base URL
 
-|                                    | Value                        |
-| ---------------------------------- | ---------------------------- |
-| **API origin** (Developer sandbox) | `https://api.sumeruai.us`    |
-| **API base**                       | `https://api.sumeruai.us/v1` |
+|                                    | Value                                 |
+| ---------------------------------- | ------------------------------------- |
+| **API origin** (token / gateway)   | `https://overseas.sumeruai.com`       |
+| **API base**                       | `https://overseas.sumeruai.com/v1`    |
+| **Auth**                           | `POST /v1/access/auth`                |
 
-Enter the **site origin** only (no `/v1`). All Developer sandbox fields start **empty** — placeholders are hints only.
+Enter the **gateway origin** only (no `/v1`). Developer sandbox pre-fills `https://overseas.sumeruai.com`. Token is issued by that host, not `api.sumeruai.us`.
 
 Official API reference: [Developer API](https://api.sumeruai.us)
 
@@ -53,17 +54,20 @@ For visitors / GitHub users — **no TTS or ATF API calls**.
 
 | File                             | Purpose                                 |
 | -------------------------------- | --------------------------------------- |
-| `demo/assets-cache.json`         | `modelId`, `downloadLink`               |
+| `demo/models/{modelId}/`         | Local model artifacts (`files[].name`)  |
+| `demo/assets-cache.json`         | `modelId`, `modelDir`, remote fallback  |
 | `demo/assets/welcome.wav`        | Bundled welcome audio                   |
 | `demo/assets/welcome-emote.json` | Bundled lip-sync (`AK/ABI/ATI/API/fps`) |
 
-Usage: the page auto-loads the bundled model on **`#quick-avatar-canvas`** on open; click **Play welcome** to drive lip-sync (no API). Switching tabs **stops** playback but keeps each mode’s avatar on its own canvas.
+Load order: **local `modelDir` → remote `downloadLink` → hide the stage** if neither works.
+
+Usage: the page auto-loads the bundled model on **`#quick-avatar-canvas`** when files exist; click **Play welcome** to drive lip-sync (no API). Switching tabs **stops** playback but keeps each mode’s avatar on its own canvas.
 
 ### 3.2 Developer sandbox
 
-Bring your own **accessKey**, **modelId**, **downloadLink**, and **voiceId**. Uses a **separate `#dev-avatar-canvas`** — nothing renders until **Load model**.
+Bring your own **accessKey**, **modelId**, **voiceId**, and a **model directory you host**. Uses a **separate `#dev-avatar-canvas`** — nothing renders until **Load model**.
 
-Usage: switch to **Developer sandbox** → fill every field yourself → **Load model** (creates `#dev-avatar-canvas`) → either:
+Usage: switch to **Developer sandbox** → fill keys / `modelId` / `voiceId` → host `files[]` on **your server** → paste that directory URL → **Load model** (creates `#dev-avatar-canvas`) → either:
 
 - **Text → TTS + /dt + Play** — script + `voiceId`
 - **Audio → /dt + Play** — upload WAV/audio
@@ -94,19 +98,24 @@ your-app/
 **Checklist**
 
 - [ ] Serve over HTTP (`npx serve .`) — **`file://` will break Workers and ES modules**
+- [ ] Host `GET /avatars/models/{id}` → `files[]` on **your server** (keep `name`, **same directory**); pass that directory as `modelUrl` — see §4.2
 - [ ] Set `workerBase: "./workers/"` (trailing slash optional; SDK normalizes it)
 - [ ] Wait for `onReady` (or `avatar.isReady`) before calling `avatar.drive()`
 - [ ] Call `avatar.unlockAudio()` inside a **user gesture** before first play (or use `sumeru-drive.js`, which calls it for you)
 - [ ] Call `avatar.stop()` before the next clip; call `avatar.destroy()` when leaving the page or swapping models
 - [ ] Use a **dedicated `<canvas>`** per avatar instance — do not reuse a canvas after `transferControlToOffscreen` (see §7.5)
 
-You already have a TalkingHead **modelId**, **downloadLink**, and clone **voiceId** (from Studio or your backend). In the browser:
+You already have a TalkingHead **modelId**, clone **voiceId**, and model **files** hosted on **your server**. In the browser:
 
 ```
 ① POST /v1/access/auth
    → accessToken
 
-② createAvatar({ modelUrl: downloadLink })
+② Poll GET /v1/avatars/models/{modelId} until status=1
+   → download every files[] (name + url, 24h temp)
+   → upload to YOUR server, keep original names
+   → createAvatar({ modelUrl: "https://your-cdn/.../mdl_xxx/" })
+   Do not pass downloadLink or files[].url into createAvatar.
 
 ③ Path A — text:
      POST /v1/tts { content, voiceId } → audioBase64
@@ -123,13 +132,13 @@ Use **`sdk/sumeru-drive.js`**:
 
 ```javascript
 import { auth } from "./sdk/sumeru-atf-api.js";
-import { createAvatar } from "./sdk/sumeru-avatar.js";
+import { createAvatar, modelUrlFromSelfHost } from "./sdk/sumeru-avatar.js";
 import { driveFromText, driveFromAudioFile } from "./sdk/sumeru-drive.js";
 
 const token = await auth(accessKey, secretKey);
 const avatar = await createAvatar({
   canvas,
-  modelUrl: downloadLink,
+  modelUrl: modelUrlFromSelfHost("https://cdn.your-company.com/talkinghead/mdl_xxx/"),
   workerBase: "./workers/",
 });
 // wait for onReady…
@@ -143,25 +152,63 @@ Model / voice **creation** APIs (`POST /v1/avatars/models`, `/v1/voices`, etc.) 
 
 ### 4.1 modelId vs Studio avatarsId
 
-| ID            | Purpose                                                                                       |
-| ------------- | --------------------------------------------------------------------------------------------- |
-| **modelId**   | **Required** for **`/audio-to-face/dt`**; `GET /v1/avatars/models/{modelId}` → `downloadLink` |
-| **avatarsId** | Mugen3D Studio product id; portrait API returns `modelId`, `downloadLink`, etc.               |
+| ID            | Purpose                                                                                          |
+| ------------- | ------------------------------------------------------------------------------------------------ |
+| **modelId**   | **Required** for **`/audio-to-face/dt`**; `GET /v1/avatars/models/{modelId}` → `files[]` to host |
+| **avatarsId** | Mugen3D Studio product id; portrait API returns `modelId`, etc.                                  |
 
 You cannot call `/dt` with avatarsId alone — you need **modelId + audio**.
 
 ---
 
+## 4.2 Host model files on your server
+
+`GET /v1/avatars/models/{modelId}` `files[]` URLs (and `downloadLink`) expire in **24 hours**. The SDK slot is **`createAvatar({ modelUrl })`** — a directory **you** host.
+
+**All model file URLs must share the same directory.** AvatarJS loads `{modelUrl}{name}` (`info.json`, `mBC.bin`, textures, …). Do not scatter files across hosts or rename them. Download every `files[].url` into **one** folder, keep original `name`, then point `modelUrl` at that folder (trailing slash).
+
+Pass an **absolute** directory URL (or a page-relative path — `modelUrlFromSelfHost` / `createAvatar` resolve it against the page). Do **not** rely on a bare `./demo/models/…` string inside AvatarJS: Workers resolve that as `/workers/demo/models/…` and every texture 404s.
+
+```
+your-cdn/talkinghead/mdl_xxx/     ← one prefix for every file
+  info.json
+  idle.json
+  mTC.bin
+  mBC.bin
+  mPC.bin
+  768_1024.webp
+  body.png
+  TIY.png  TWY.png  TK.png
+  BIY.png  BWY.png  BK.png
+  PIY.png  PWY.png  PK.png
+```
+
+```javascript
+import { createAvatar, modelUrlFromSelfHost } from "./sdk/sumeru-avatar.js";
+
+const avatar = await createAvatar({
+  canvas,
+  modelUrl: modelUrlFromSelfHost("https://cdn.your-company.com/talkinghead/mdl_xxx/"),
+  workerBase: "./workers/",
+});
+```
+
+Do **not** pass `downloadLink` or `files[].url` into `modelUrl`. Poll the API only to fetch the list; then keep your own copy.
+
+---
+
 ## 5. Developer sandbox fields ↔ API
 
-| Demo field   | How to obtain                                             |
-| ------------ | --------------------------------------------------------- |
-| accessToken  | `POST /v1/access/auth` or paste after **Get accessToken** |
-| modelId      | Studio / `GET /v1/avatars/models/{modelId}`               |
-| downloadLink | Same model response, or Studio                            |
-| voiceId      | Clone voice used with `POST /v1/tts`                      |
-| script text  | Your copy → **Text → TTS + /dt + Play**                   |
-| audio file   | Local WAV → **Audio → /dt + Play**                        |
+| Demo field        | How to obtain                                                                 |
+| ----------------- | ----------------------------------------------------------------------------- |
+| accessToken       | `POST /v1/access/auth` or paste after **Get accessToken**                     |
+| modelId           | Studio / `GET /v1/avatars/models/{modelId}` (for `/dt`, not for rendering)    |
+| Model directory   | **Your** server / same-origin folder after you download `files[]`             |
+| Model files input | Optional checklist of names — does **not** load the avatar                    |
+| List API files    | Polls `files[]` so you know what to host                                      |
+| voiceId           | Clone voice used with `POST /v1/tts`                                          |
+| script text       | Your copy → **Text → TTS + /dt + Play**                                       |
+| audio file        | Local WAV → **Audio → /dt + Play**                                            |
 
 ---
 
@@ -190,7 +237,8 @@ Script output:
 
 - `demo/assets/welcome.wav`
 - `demo/assets/welcome-emote.json`
-- `demo/assets-cache.json`
+- `demo/models/{modelId}/` (`files[]` downloaded with original names)
+- `demo/assets-cache.json` (`modelDir`, `modelFiles`, remote fallback)
 
 **Commit those asset files to Git** so visitors can use Quick demo without calling the API themselves.  
 `demo/assets-cache.json` holds **bundled Quick demo** model metadata only (no keys). **Developer sandbox** fields are never read from this file — developers paste their own IDs in the UI.
@@ -239,12 +287,12 @@ See `examples/minimal.html` and `demo/demo.js` (Developer sandbox uses the same 
 ### 7.1 Quick demo (bundled, no API)
 
 ```javascript
-import { createAvatar } from "./sdk/sumeru-avatar.js";
+import { createAvatar, modelUrlFromSelfHost } from "./sdk/sumeru-avatar.js";
 import { buildBundledDrive } from "./sdk/demo-cache.js";
 
 const avatar = await createAvatar({
   canvas: document.querySelector("#canvas"),
-  modelUrl: downloadLink,
+  modelUrl: modelUrlFromSelfHost("./demo/models/YOUR_MODEL_ID/"),
   workerBase: "./workers/",
   onReady: () => console.log("ready"),
 });
@@ -296,7 +344,7 @@ Deploy `workers/decoderWorker.js` and `workers/rendererWorker.js` on the same or
 ```javascript
 const avatar = await createAvatar({
   canvas,
-  modelUrl: downloadLink,
+  modelUrl: modelUrlFromSelfHost("https://cdn.your-company.com/talkinghead/mdl_xxx/"),
   workerBase: "./workers/",
   onReady: () => console.log("model ready"),
   onAnimationReady: () => console.log("emote decoded"),
@@ -350,6 +398,7 @@ Thin wrapper around [AvatarJS](https://static.sumeruai.com/new-avatars/AvatarJS.
 | `AVATAR_JS_CDN`           | CDN URL for AvatarJS (`https://static.sumeruai.com/new-avatars/AvatarJS.js`)                                                                                                                       |
 | `loadAvatarJS()`          | `import()` the CDN module once; returns `Promise<module>`. Normally you do **not** call this — `createAvatar()` does it for you. Useful for preloading AvatarJS before mounting.                   |
 | `cloneDrivePayload(data)` | Deep-clones `audioArray` before `receiveData`. AvatarJS detaches the underlying `ArrayBuffer` on decode — reuse the same object without cloning throws. `avatar.drive()` calls this automatically. |
+| `modelUrlFromSelfHost(base)` | Normalize **your** hosted model directory (trailing slash). Resolves page-relative paths to an absolute URL so Workers do not prefix `/workers/`. |
 | `createAvatar(opts)`      | Load model, mount Workers on `canvas`, return an `AvatarHandle`. See §7.3 for callbacks.                                                                                                           |
 
 **`createAvatar(opts)` parameters**
@@ -357,7 +406,7 @@ Thin wrapper around [AvatarJS](https://static.sumeruai.com/new-avatars/AvatarJS.
 | Option             | Required | Description                                                |
 | ------------------ | -------- | ---------------------------------------------------------- |
 | `canvas`           | Yes      | `HTMLCanvasElement` to render into                         |
-| `modelUrl`         | Yes      | `downloadLink` from `GET /v1/avatars/models/{modelId}`     |
+| `modelUrl`         | Yes      | Directory **you** host (`files[].name` from `GET /v1/avatars/models/{id}`). Use `modelUrlFromSelfHost`. Not API temp URLs. |
 | `workerBase`       | No       | Directory containing both workers (default `"./workers/"`) |
 | `onReady`          | No       | Model worker loaded — enable UI / start driving            |
 | `onAnimationReady` | No       | Emote decoded; wrapper auto-calls `startPlay2()`           |
@@ -387,6 +436,7 @@ Cross-reference: drive payload fields → §7.2; callbacks and examples → §7.
 | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **HTTP only**               | ES modules and Worker scripts require a static server (`npx serve .`). Opening `index.html` via `file://` fails.                                                                                                                                                           |
 | **Worker same-origin**      | `decoderWorker.js` and `rendererWorker.js` must be served from the **same origin** as your page. Pass their directory via `workerBase`.                                                                                                                                    |
+| **Absolute `modelUrl`**     | AvatarJS fetches `{modelUrl}{name}` from inside Workers. Relative `./models/` becomes `/workers/models/`. Use `modelUrlFromSelfHost()` or an `https://` / root-absolute directory.                                                                                         |
 | **AvatarJS CDN**            | Render core loads from `static.sumeruai.com`. Offline or air-gapped deployments need a separate arrangement — not supported by this demo.                                                                                                                                  |
 | **One canvas per instance** | Each `createAvatar({ canvas })` binds that canvas to an offscreen transfer inside AvatarJS. **Do not reuse** the same canvas for a second instance without replacing the DOM node. The Demo uses separate `#quick-avatar-canvas` and `#dev-avatar-canvas` for this reason. |
 | **Swapping models**         | Prefer `destroy()` on the old handle, insert a fresh `<canvas>`, then `createAvatar()` again.                                                                                                                                                                              |
@@ -481,6 +531,9 @@ You replayed drive data without cloning. Use `avatar.drive()` (not raw `receiveD
 **Can I skip `sumeru-drive.js`?**  
 Yes. Build the payload with `sumeru-atf-api.js` (`auth`, `synthesizeTtsLong`, `audioToFaceDt`) and call `avatar.unlockAudio()` + `avatar.drive()` yourself.
 
+**Should I pass `downloadLink` into `createAvatar`?**  
+No. Poll `GET /v1/avatars/models/{modelId}` until `status=1`, download every `files[]` item (24h URLs) into **one directory on your server**, keep original `name` (all URLs must share that same prefix), then pass that directory as `modelUrl` (`modelUrlFromSelfHost`).
+
 ---
 
 ## 10. Further reading
@@ -498,3 +551,5 @@ Yes. Build the payload with `sumeru-atf-api.js` (`auth`, `synthesizeTtsLong`, `a
 | 2026-08-18 | §7.7 usage ping (`bizType=10`, `eventType=2`, no token)               |
 | 2026-08-19 | §7.7 install_success payload (`anonId`, `fromPage`, `sdkVersion`, …)  |
 | 2026-08-20 | §7.7 ping URL `https://api.sumeruai.us/v1/event-stats/increment`      |
+| 2026-08-24 | Host `files[]` on your server; `modelUrl` is that directory. All file URLs must share the same prefix. Quick demo: local → remote → hide. `createAvatar` resolves relative `modelUrl` against the page (avoid `/workers/demo/models` 404). |
+| 2026-08-25 | Token / gateway default: `https://overseas.sumeruai.com` (`POST /v1/access/auth`). |

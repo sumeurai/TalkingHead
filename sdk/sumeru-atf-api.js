@@ -1,20 +1,22 @@
 /**
  * SumeruAI Developer Open API helpers for TalkingHead + AudioToFace (DT).
- * API base: https://api.sumeruai.us/v1
+ * API base: https://overseas.sumeruai.com/v1
+ * Token: POST {origin}/v1/access/auth
  */
 
 export const API_ORIGINS = {
+  overseas: "https://overseas.sumeruai.com",
   prod: "https://api.sumeruai.us",
 };
 
-let apiOrigin = API_ORIGINS.prod;
+let apiOrigin = API_ORIGINS.overseas;
 
-/** @returns e.g. https://api.sumeruai.us/v1 */
+/** @returns e.g. https://overseas.sumeruai.com/v1 */
 export function getApiBase() {
   return `${apiOrigin.replace(/\/$/, "")}/v1`;
 }
 
-/** @param {string} origin — site origin, e.g. https://api.sumeruai.us */
+/** @param {string} origin — site origin, e.g. https://overseas.sumeruai.com */
 export function setApiOrigin(origin) {
   if (!origin) return;
   apiOrigin = origin.replace(/\/$/, "");
@@ -115,12 +117,19 @@ export async function getModel(token, modelId) {
   return apiJson(`/avatars/models/${encodeURIComponent(modelId)}`, { token });
 }
 
+/**
+ * Poll until status=1. Prefer `files[]` (name + url, 24h temp).
+ * Next: download every file to YOUR server (keep `name`), then
+ * `createAvatar({ modelUrl: modelUrlFromSelfHost(yourDirectory) })`.
+ * Do not pass `downloadLink` / `files[].url` into `createAvatar`.
+ */
 export async function pollModel(token, modelId, { intervalMs = 3000, timeoutMs = 600000 } = {}) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const data = await getModel(token, modelId);
-    if (String(data.status) === "1" && data.downloadLink) return data;
-    if (String(data.status) === "4") throw new Error("Model generation failed");
+    const filesReady = Array.isArray(data.files) && data.files.length > 0;
+    if (String(data.status) === "1" && (filesReady || data.downloadLink)) return data;
+    if (String(data.status) === "4") throw new Error(data.failMessage || "Model generation failed");
     await new Promise((r) => setTimeout(r, intervalMs));
   }
   throw new Error("Poll model timeout");

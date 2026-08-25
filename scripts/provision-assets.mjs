@@ -4,6 +4,7 @@
  * Writes:
  *   demo/assets/welcome.wav
  *   demo/assets/welcome-emote.json  (AK/ABI/ATI/API — safe to commit for public demo)
+ *   demo/models/{modelId}/          (files[] from GET /avatars/models/{id})
  *   demo/assets-cache.json
  *
  * Usage:
@@ -18,7 +19,7 @@ import { fileURLToPath } from "node:url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
 
-const API_ORIGIN = process.env.API_ORIGIN ?? "https://api.sumeruai.us";
+const API_ORIGIN = process.env.API_ORIGIN ?? "https://overseas.sumeruai.com";
 const API_BASE = `${API_ORIGIN.replace(/\/$/, "")}/v1`;
 
 const ACCESS_KEY = process.env.ACCESS_KEY ?? "";
@@ -32,9 +33,31 @@ const WELCOME_TEXT =
   `Hello developer, welcome to use this encapsulated digital-human SDK. You are hearing this voice means the audio-video rendering, voice driving and lip-sync links are initialized successfully.`;
 
 const ASSETS_DIR = path.join(ROOT, "demo", "assets");
+const MODELS_DIR = path.join(ROOT, "demo", "models");
 const WAV_OUT = path.join(ASSETS_DIR, "welcome.wav");
 const EMOTE_OUT = path.join(ASSETS_DIR, "welcome-emote.json");
 const CACHE_OUT = path.join(ROOT, "demo", "assets-cache.json");
+
+function modelReady(data) {
+  return (
+    String(data.status) === "1" &&
+    ((Array.isArray(data.files) && data.files.length > 0) || data.downloadLink)
+  );
+}
+
+async function downloadModelFiles(files, outDir) {
+  fs.mkdirSync(outDir, { recursive: true });
+  const names = [];
+  for (const file of files || []) {
+    if (!file?.name || !file?.url) continue;
+    const res = await fetch(file.url);
+    if (!res.ok) throw new Error(`download ${file.name} failed: ${res.status}`);
+    fs.writeFileSync(path.join(outDir, file.name), Buffer.from(await res.arrayBuffer()));
+    names.push(file.name);
+    console.log("  saved", file.name);
+  }
+  return names;
+}
 
 async function parseJson(res) {
   const text = await res.text();
@@ -155,6 +178,8 @@ async function main() {
 
   let modelId = process.env.MODEL_ID ?? "";
   let downloadLink = process.env.DOWNLOAD_LINK ?? "";
+  let modelDir = "";
+  let modelFiles = [];
   const styleIdForCache = process.env.STYLE_ID ?? "";
 
   if (!modelId || !downloadLink) {
@@ -199,12 +224,32 @@ async function main() {
     modelId = modelTask.modelId;
     const model = await poll(() => apiJson(`/avatars/models/${modelId}`, { token }), {
       intervalMs: 5000,
-      ok: (d) => String(d.status) === "1" && d.downloadLink,
+      ok: modelReady,
       fail: (d) => String(d.status) === "4",
     });
-    downloadLink = model.downloadLink;
+    downloadLink = model.downloadLink ?? downloadLink;
+    if (Array.isArray(model.files) && model.files.length > 0) {
+      const absDir = path.join(MODELS_DIR, String(modelId));
+      const names = await downloadModelFiles(model.files, absDir);
+      modelFiles = names;
+      modelDir = `./demo/models/${modelId}/`;
+    }
+  } else {
+    try {
+      const existing = await apiJson(`/avatars/models/${modelId}`, { token });
+      downloadLink = existing.downloadLink ?? downloadLink;
+      if (Array.isArray(existing.files) && existing.files.length > 0) {
+        const absDir = path.join(MODELS_DIR, String(modelId));
+        const names = await downloadModelFiles(existing.files, absDir);
+        modelFiles = names;
+        modelDir = `./demo/models/${modelId}/`;
+      }
+    } catch (err) {
+      console.warn("  skip model files download:", err instanceof Error ? err.message : err);
+    }
   }
   console.log("  modelId:", modelId);
+  console.log("  modelDir:", modelDir || "(none — Quick demo will use remote downloadLink)");
   console.log("  downloadLink:", downloadLink);
 
   console.log("TTS welcome…");
@@ -279,6 +324,8 @@ async function main() {
     voiceId,
     styleId: styleIdForCache || undefined,
     modelId,
+    modelDir: modelDir || `./demo/models/${modelId}/`,
+    modelFiles,
     downloadLink,
     welcomeText: WELCOME_TEXT,
     audioKey,
@@ -291,7 +338,9 @@ async function main() {
 
   fs.writeFileSync(CACHE_OUT, JSON.stringify(cache, null, 2), "utf8");
   console.log("\nWrote", CACHE_OUT);
-  console.log("Commit demo/assets/welcome.wav, welcome-emote.json, assets-cache.json for public Quick demo.");
+  console.log(
+    "Commit demo/assets/welcome.wav, welcome-emote.json, demo/models/{id}/, assets-cache.json for public Quick demo.",
+  );
 }
 
 main().catch((e) => {

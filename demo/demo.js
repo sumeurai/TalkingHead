@@ -1,7 +1,8 @@
-import { createAvatar } from "../sdk/sumeru-avatar.js";
+import { createAvatar, modelUrlFromSelfHost } from "../sdk/sumeru-avatar.js";
 import { setSiteOrigin } from "../sdk/sumeru-event-stats.js";
 import {
   auth,
+  getModel,
   pollModel,
   setApiOrigin,
   getApiBase,
@@ -11,6 +12,7 @@ import {
   loadAssetsCache,
   buildBundledDrive,
   loadBundledEmote,
+  probeModelDir,
   DEFAULT_EMOTE_FILE,
   DEFAULT_AUDIO_FILE,
 } from "../sdk/demo-cache.js";
@@ -32,11 +34,17 @@ function pickConfigString(...values) {
   return "";
 }
 
-/** Quick demo only — bundled assets; never auto-fills Developer sandbox form. */
-const quickModelUrl = pickConfigString(
+/** Quick demo only — never auto-fills Developer sandbox form. */
+const quickLocalDir = pickConfigString(localConfig.modelDir, assetsCache.modelDir);
+const quickRemoteUrl = pickConfigString(
   localConfig.downloadLink,
   assetsCache.downloadLink,
 );
+const quickModelFiles = Array.isArray(localConfig.modelFiles)
+  ? localConfig.modelFiles
+  : Array.isArray(assetsCache.modelFiles)
+    ? assetsCache.modelFiles
+    : [];
 const bundledEmoteUrl =
   pickConfigString(
     localConfig.emoteFile,
@@ -50,7 +58,7 @@ const bundledAudioUrl =
     DEFAULT_AUDIO_FILE,
   ) || DEFAULT_AUDIO_FILE;
 
-const DEFAULT_API_ORIGIN_HINT = "https://api.sumeruai.us";
+const DEFAULT_API_ORIGIN_HINT = "https://overseas.sumeruai.com";
 const demoSiteOrigin = pickConfigString(localConfig.siteOrigin);
 if (demoSiteOrigin) setSiteOrigin(demoSiteOrigin);
 
@@ -70,10 +78,13 @@ const els = {
   voiceId: $("#voice-id"),
   modelId: $("#model-id"),
   modelUrl: $("#model-url"),
+  modelFiles: $("#model-files"),
+  modelFilesHint: $("#model-files-hint"),
   driveText: $("#drive-text"),
   audioFile: $("#audio-file"),
   audioFileHint: $("#audio-file-hint"),
   btnAuth: $("#btn-auth"),
+  btnListFiles: $("#btn-list-files"),
   btnLoadModel: $("#btn-load-model"),
   btnDriveText: $("#btn-drive-text"),
   btnDriveAudio: $("#btn-drive-audio"),
@@ -91,6 +102,8 @@ const els = {
 const quick = {
   avatar: null,
   modelUrl: "",
+  source: "",
+  loadError: null,
   mountPromise: null,
 };
 
@@ -98,6 +111,7 @@ const quick = {
 const developer = {
   avatar: null,
   modelUrl: "",
+  loadError: null,
   mountPromise: null,
   canvas: null,
 };
@@ -185,9 +199,13 @@ function setDemoMode(mode) {
 
 function renderQuickStatus() {
   if (!els.quickStatus) return;
+  const modelLine = quick.modelUrl
+    ? `${quick.source || "model"}: <code>${shortUrl(quick.modelUrl)}</code>`
+    : `model: <code>not available</code>`;
   els.quickStatus.innerHTML = [
     `<strong>Bundled Quick demo</strong>`,
-    `model: <code>${shortUrl(quickModelUrl)}</code>`,
+    modelLine,
+    `local dir: <code>${shortUrl(quickLocalDir) || "—"}</code>`,
     `audio: <code>${bundledAudioUrl}</code>`,
     `emote: <code>${bundledEmoteUrl}</code>`,
     `bundled emote: <code>${bundledEmoteReady ? "loaded ✓" : "checking…"}</code>`,
@@ -198,7 +216,6 @@ function renderQuickStatus() {
 function clearDeveloperForm() {
   tokenCache = "";
   for (const el of [
-    els.apiEnv,
     els.accessKey,
     els.secretKey,
     els.accessToken,
@@ -209,10 +226,17 @@ function clearDeveloperForm() {
   ]) {
     if (el) el.value = "";
   }
+  if (els.apiEnv) els.apiEnv.value = DEFAULT_API_ORIGIN_HINT;
+  setApiOrigin(DEFAULT_API_ORIGIN_HINT);
   if (els.audioFile) els.audioFile.value = "";
   if (els.audioFileHint) {
     els.audioFileHint.textContent =
       "Select WAV/audio, then click Audio → /dt + Play.";
+  }
+  if (els.modelFiles) els.modelFiles.value = "";
+  if (els.modelFilesHint) {
+    els.modelFilesHint.textContent =
+      "After you download files[], put them on your server (same folder, original names), then paste that directory URL above. Selecting files here does not load the avatar.";
   }
 }
 
@@ -235,6 +259,8 @@ function applyApiOriginFromForm() {
 
 function initDeveloperSandboxDefaults() {
   clearDeveloperForm();
+  if (els.apiEnv) els.apiEnv.value = DEFAULT_API_ORIGIN_HINT;
+  setApiOrigin(DEFAULT_API_ORIGIN_HINT);
   setDeveloperControlsEnabled(false);
 }
 
@@ -276,20 +302,105 @@ async function ensureAuth() {
   return token;
 }
 
-async function resolveDeveloperModelUrl(token) {
-  const direct = els.modelUrl.value.trim();
-  if (direct) return direct;
+function logModelFiles(files) {
+  if (!Array.isArray(files) || files.length === 0) {
+    log("files[] empty — wait for status=1 or re-fetch the model", "err");
+    return;
+  }
+  log(`files (${files.length}) — download to YOUR server, keep original names:`, "ok");
+  for (const file of files) {
+    const name = file?.name || "(missing name)";
+    const url = file?.url || "(missing url)";
+    log(`  ${name}  ${url}`, "ok");
+  }
+  log("Do not pass downloadLink or files[].url into createAvatar (24h temp).", "ok");
+}
+
+async function listApiModelFiles() {
   const modelId = els.modelId.value.trim();
-  if (!modelId) throw new Error("Provide downloadLink or modelId");
-  if (!token) throw new Error("Auth required to poll modelId");
-  log(`Polling model ${modelId}…`);
-  const data = await pollModel(token, modelId, {
-    intervalMs: 2000,
-    timeoutMs: 120000,
+  if (!modelId) throw new Error("Fill modelId to list API files");
+  const token = await ensureAuth();
+  log(`GET /avatars/models/${modelId}…`);
+  let data;
+  try {
+    data = await getModel(token, modelId);
+  } catch {
+    data = await pollModel(token, modelId, {
+      intervalMs: 2000,
+      timeoutMs: 120000,
+    });
+  }
+  log(`Model status=${data.status}`, String(data.status) === "1" ? "ok" : "");
+  logModelFiles(data.files);
+  return data;
+}
+
+async function resolveQuickModelUrl() {
+  if (quickLocalDir) {
+    const local = await probeModelDir(quickLocalDir, quickModelFiles);
+    if (local) return { url: local, source: "local" };
+    log("Local model files missing — trying remote fallback…");
+  }
+  if (quickRemoteUrl) {
+    // Keep the cached prefix as-is (AvatarJS historically used downloadLink without a forced slash).
+    return { url: quickRemoteUrl, source: "remote" };
+  }
+  return null;
+}
+
+function showQuickStage() {
+  els.quickStageWrap?.classList.remove("is-empty");
+  if (els.quickBadge) els.quickBadge.hidden = false;
+}
+
+function hideQuickStage() {
+  if (quick.avatar) {
+    try {
+      quick.avatar.destroy();
+    } catch {
+      /* ignore */
+    }
+    quick.avatar = null;
+  }
+  quick.modelUrl = "";
+  quick.source = "";
+  quick.mountPromise = null;
+  els.btnQuickPlay.disabled = true;
+  els.btnQuickStop.disabled = true;
+  els.quickStageWrap?.classList.add("is-empty");
+  if (els.quickBadge) {
+    els.quickBadge.hidden = true;
+    els.quickBadge.textContent = "Idle";
+    els.quickBadge.classList.remove("is-ready");
+  }
+  renderQuickStatus();
+}
+
+function waitForAvatarReady(avatar, getError, timeoutMs = 90000) {
+  return new Promise((resolve, reject) => {
+    if (avatar.isReady) {
+      resolve();
+      return;
+    }
+    const deadline = Date.now() + timeoutMs;
+    const timer = setInterval(() => {
+      if (avatar.isReady) {
+        clearInterval(timer);
+        resolve();
+        return;
+      }
+      const err = getError?.();
+      if (err) {
+        clearInterval(timer);
+        reject(err instanceof Error ? err : new Error(String(err)));
+        return;
+      }
+      if (Date.now() > deadline) {
+        clearInterval(timer);
+        reject(new Error("Model load timeout"));
+      }
+    }, 200);
   });
-  if (data.downloadLink) els.modelUrl.value = data.downloadLink;
-  log(`Model ready: ${data.downloadLink}`, "ok");
-  return data.downloadLink;
 }
 
 function onQuickAvatarReady() {
@@ -305,28 +416,33 @@ function onDevAvatarReady() {
   setDeveloperControlsEnabled(true);
 }
 
-async function mountQuickAvatar() {
-  if (!quickModelUrl) {
-    throw new Error("Missing downloadLink in demo/assets-cache.json");
-  }
-  if (quick.avatar?.isReady && quick.modelUrl === quickModelUrl) return;
+async function mountQuickAvatar(modelUrl, source) {
+  if (quick.avatar?.isReady && quick.modelUrl === modelUrl) return;
 
   if (quick.avatar) {
     quick.avatar.destroy();
     quick.avatar = null;
   }
 
+  quick.loadError = null;
+  showQuickStage();
   setQuickBadge("Loading…", false);
-  log("Quick demo: loading bundled model…", "ok");
-  quick.modelUrl = quickModelUrl;
+  log(`Quick demo: loading ${source} model…`, "ok");
+  quick.modelUrl = modelUrl;
+  quick.source = source;
+  renderQuickStatus();
   quick.avatar = await createAvatar({
     canvas: els.quickCanvas,
-    modelUrl: quickModelUrl,
+    modelUrl,
     workerBase: "./workers/",
     onReady: onQuickAvatarReady,
     onError: (err) => {
       log(`Quick avatar error: ${JSON.stringify(err)}`, "err");
-      setQuickBadge("Error", false);
+      if (!quick.avatar?.isReady) {
+        quick.loadError = err instanceof Error ? err : new Error(String(err));
+      } else {
+        setQuickBadge("Error", false);
+      }
     },
     onProgress: (pct) => setQuickBadge(`Playing ${Math.round(pct)}%`, true),
     onAudioEnd: () => {
@@ -334,15 +450,18 @@ async function mountQuickAvatar() {
       setQuickBadge("Ready", true);
     },
   });
+  await waitForAvatarReady(quick.avatar, () => quick.loadError);
 }
 
-async function ensureQuickAvatar() {
+async function ensureQuickAvatar(resolved) {
   if (quick.avatar?.isReady) return;
   if (quick.mountPromise) {
     await quick.mountPromise;
     return;
   }
-  quick.mountPromise = mountQuickAvatar();
+  const target = resolved ?? (await resolveQuickModelUrl());
+  if (!target) throw new Error("No Quick demo model");
+  quick.mountPromise = mountQuickAvatar(target.url, target.source);
   try {
     await quick.mountPromise;
   } finally {
@@ -376,6 +495,7 @@ function hideDevStage() {
     developer.avatar = null;
   }
   developer.modelUrl = "";
+  developer.loadError = null;
   developer.mountPromise = null;
   developer.canvas?.remove();
   developer.canvas = null;
@@ -396,8 +516,9 @@ async function mountDeveloperAvatar(modelUrl) {
   const canvas = createDevCanvas();
 
   setDevBadge("Loading…", false);
-  log("Developer: loading model…", "ok");
+  log("Developer: loading model from your directory…", "ok");
   developer.modelUrl = modelUrl;
+  developer.loadError = null;
   developer.avatar = await createAvatar({
     canvas,
     modelUrl,
@@ -405,7 +526,11 @@ async function mountDeveloperAvatar(modelUrl) {
     onReady: onDevAvatarReady,
     onError: (err) => {
       log(`Developer avatar error: ${JSON.stringify(err)}`, "err");
-      setDevBadge("Error", false);
+      if (!developer.avatar?.isReady) {
+        developer.loadError = err instanceof Error ? err : new Error(String(err));
+      } else {
+        setDevBadge("Error", false);
+      }
     },
     onProgress: (pct) => setDevBadge(`Playing ${Math.round(pct)}%`, true),
     onAudioEnd: () => {
@@ -413,6 +538,7 @@ async function mountDeveloperAvatar(modelUrl) {
       setDevBadge("Ready", true);
     },
   });
+  await waitForAvatarReady(developer.avatar, () => developer.loadError);
 }
 
 async function ensureDeveloperAvatar() {
@@ -424,10 +550,18 @@ async function ensureDeveloperAvatar() {
   }
 
   developer.mountPromise = (async () => {
-    const token = await ensureAuth();
-    log(`API: ${getApiBase()}`, "ok");
-    const modelUrl = await resolveDeveloperModelUrl(token);
-    await mountDeveloperAvatar(modelUrl);
+    const hosted = modelUrlFromSelfHost(els.modelUrl?.value);
+    if (!hosted) {
+      const modelId = els.modelId.value.trim();
+      if (modelId) {
+        await listApiModelFiles();
+      }
+      throw new Error(
+        "Host files[] on YOUR server (keep original names), then paste that directory URL into Model directory. Do not load from downloadLink.",
+      );
+    }
+    log(`Developer modelUrl (your host): ${hosted}`, "ok");
+    await mountDeveloperAvatar(hosted);
   })();
 
   try {
@@ -441,20 +575,21 @@ async function ensureDeveloperAvatar() {
 }
 
 async function bootQuickAvatar() {
-  if (!quickModelUrl) {
+  const resolved = await resolveQuickModelUrl();
+  if (!resolved) {
     log(
-      "Missing downloadLink in demo/assets-cache.json — run node scripts/provision-assets.mjs",
+      "No local demo/models/ files and no remote downloadLink — Quick demo hidden",
       "err",
     );
-    setQuickBadge("No model", false);
+    hideQuickStage();
     return;
   }
   try {
-    await ensureQuickAvatar();
+    await ensureQuickAvatar(resolved);
     log('Quick demo ready — click "Play welcome"', "ok");
   } catch (e) {
     log(e instanceof Error ? e.message : String(e), "err");
-    setQuickBadge("Error", false);
+    hideQuickStage();
   }
 }
 
@@ -486,6 +621,17 @@ async function handleAuth() {
     log(e instanceof Error ? e.message : String(e), "err");
   } finally {
     els.btnAuth.disabled = false;
+  }
+}
+
+async function handleListFiles() {
+  els.btnListFiles.disabled = true;
+  try {
+    await listApiModelFiles();
+  } catch (e) {
+    log(e instanceof Error ? e.message : String(e), "err");
+  } finally {
+    els.btnListFiles.disabled = false;
   }
 }
 
@@ -575,6 +721,7 @@ els.modeDeveloper?.addEventListener("click", () => setDemoMode("developer"));
 els.btnQuickPlay?.addEventListener("click", handleQuickPlay);
 els.btnQuickStop?.addEventListener("click", handleQuickStop);
 els.btnAuth?.addEventListener("click", handleAuth);
+els.btnListFiles?.addEventListener("click", handleListFiles);
 els.btnLoadModel?.addEventListener("click", handleLoadModel);
 els.btnDriveText?.addEventListener("click", handleDriveFromText);
 els.btnDriveAudio?.addEventListener("click", handleDriveFromAudio);
@@ -588,9 +735,19 @@ els.audioFile?.addEventListener("change", () => {
   }
   log(`Audio selected: ${file.name}`, "ok");
 });
+els.modelFiles?.addEventListener("change", () => {
+  const files = [...(els.modelFiles.files || [])];
+  if (!files.length) return;
+  const names = files.map((f) => f.name).join(", ");
+  if (els.modelFilesHint) {
+    els.modelFilesHint.textContent = `Selected ${files.length} file(s): ${names}. Host them on YOUR server with these names, then paste the directory URL above.`;
+  }
+  log(`Model files selected (${files.length}): ${names}`, "ok");
+  log("Upload/select here is only a checklist — createAvatar needs your hosted directory URL.", "ok");
+});
 
 initPage();
 setDemoMode("quick");
 void checkBundledEmote();
-log("Quick demo: bundled model auto-loads on #quick-avatar-canvas");
+log("Quick demo: local demo/models/ first, then remote, hidden if neither works");
 void bootQuickAvatar();

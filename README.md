@@ -31,14 +31,16 @@ npx serve .
 ### Quick demo tab
 
 - Canvas: `#quick-avatar-canvas`
-- Bundled model + `welcome.wav` + `welcome-emote.json` from `demo/assets-cache.json` and `demo/assets/`
-- **No API key** — model auto-loads on page open; click **Play welcome** for lip-sync
+- Local `demo/models/{modelId}/` first, then remote `downloadLink`; **hidden** if neither works
+- Welcome audio/lip-sync from `demo/assets/` (`welcome.wav` + `welcome-emote.json`)
+- **No API key** — model auto-loads on page open when files exist; click **Play welcome** for lip-sync
 - Optional: `config.local.js` can override asset paths (Developer tab is never pre-filled)
 
 ### Developer sandbox tab
 
 - Canvas: created on **Load model** as `#dev-avatar-canvas` (separate from Quick demo)
-- Form fields start **empty** — paste your own `accessKey`, `secretKey`, `modelId`, `downloadLink`, `voiceId`
+- Form fields start **empty** — paste your own `accessKey`, `secretKey`, `modelId`, **hosted model directory**, `voiceId`
+- Host `GET /avatars/models/{id}` → `files[]` on **your server** in **one directory** (same prefix for every `name`), then paste that directory (do not use API temp URLs)
 - **Get accessToken** → **Load model** → either:
   - **Text → TTS + /dt + Play** (uses `voiceId`)
   - **Audio → /dt + Play** (upload WAV/audio)
@@ -59,12 +61,13 @@ For a stripped-down starting point to copy into your project, use [`examples/min
 
 ## API base URL
 
-|                | Value                        |
-| -------------- | ---------------------------- |
-| **API origin** | `https://api.sumeruai.us`    |
-| **API base**   | `https://api.sumeruai.us/v1` |
+|                | Value                              |
+| -------------- | ---------------------------------- |
+| **API origin** | `https://overseas.sumeruai.com`    |
+| **API base**   | `https://overseas.sumeruai.com/v1` |
+| **Auth**       | `POST /v1/access/auth`             |
 
-See [Developer API](https://api.sumeruai.us) for the official Open API reference.
+Token is issued by [overseas.sumeruai.com](https://overseas.sumeruai.com). See [Developer API](https://api.sumeruai.us) for the Open API reference.
 
 ## Bundled Quick demo assets
 
@@ -72,7 +75,8 @@ Committed for public playback without API calls (used by `index.html` Quick tab)
 
 | File                             | Purpose                                                 |
 | -------------------------------- | ------------------------------------------------------- |
-| `demo/assets-cache.json`         | `modelId`, `downloadLink`, paths to bundled drive files |
+| `demo/models/{modelId}/`         | Local model artifacts (`files[].name`)                  |
+| `demo/assets-cache.json`         | `modelId`, `modelDir`, remote fallback, drive paths     |
 | `demo/assets/welcome.wav`        | Welcome TTS audio                                       |
 | `demo/assets/welcome-emote.json` | Lip-sync (`AK/ABI/ATI/API/fps`)                         |
 
@@ -86,14 +90,14 @@ ACCESS_KEY=... SECRET_KEY=... VOICE_ID=... MODEL_ID=... DOWNLOAD_LINK=... \
 ## SDK usage
 
 ```javascript
-import { createAvatar } from "./sdk/sumeru-avatar.js";
+import { createAvatar, modelUrlFromSelfHost } from "./sdk/sumeru-avatar.js";
 import { auth } from "./sdk/sumeru-atf-api.js";
 import { driveFromText } from "./sdk/sumeru-drive.js";
 
 const token = await auth(accessKey, secretKey);
 const avatar = await createAvatar({
   canvas: document.querySelector("#canvas"),
-  modelUrl: downloadLink,
+  modelUrl: modelUrlFromSelfHost("https://cdn.your-company.com/talkinghead/mdl_xxx/"),
   workerBase: "./workers/",
 });
 
@@ -114,7 +118,8 @@ TalkingHead/
 ├── demo/
 │   ├── demo.js             # Demo app logic
 │   ├── demo.css            # Demo styles
-│   └── assets/             # welcome.wav, welcome-emote.json
+│   ├── assets/             # welcome.wav, welcome-emote.json
+│   └── models/             # Quick demo files[] (local first)
 ├── examples/
 │   └── minimal.html        # Minimal integration template (copy into your app)
 ├── sdk/                    # atf-api, avatar, drive, event-stats

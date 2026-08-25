@@ -32,8 +32,11 @@
   <body>
     <h1>Minimal integration</h1>
     <p>
-      Set env vars below, then use <code>sdk/sumeru-drive.js</code> — same as
+      Set values below, then use <code>sdk/sumeru-drive.js</code> — same as
       Developer sandbox.
+      <code>MODEL_URL</code> must be a directory <strong>you</strong> host
+      (downloaded <code>files[]</code>, original names) — not the API temp
+      <code>downloadLink</code>.
     </p>
     <div class="stage"><canvas id="c"></canvas></div>
     <button type="button" id="drive-text" disabled>Text → TTS + /dt</button>
@@ -49,6 +52,7 @@
 
       const ACCESS_KEY = "";
       const SECRET_KEY = "";
+      // Your hosted model directory (files[] from GET /avatars/models/{id})
       const MODEL_URL = "";
       const MODEL_ID = "";
       const VOICE_ID = "";

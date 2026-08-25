@@ -279,7 +279,8 @@ body {
   display: none !important;
 }
 
-.page.is-developer #dev-stage-wrap.is-empty {
+.page.is-developer #dev-stage-wrap.is-empty,
+.page.is-quick #quick-stage-wrap.is-empty {
   display: none;
 }
 
@@ -365,6 +366,7 @@ body {
 .file-input {
   font-size: 0.85rem;
   color: #9aa8b8;
+  cursor: pointer;
 }
 
 .log {

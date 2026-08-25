@@ -44,11 +44,48 @@ export function cloneDrivePayload(data) {
 }
 
 /**
+ * Resolve a path against the page (not the Worker). AvatarJS fetches model
+ * files inside Workers — a relative `./demo/models/` becomes
+ * `/workers/demo/models/` and 404s.
+ *
+ * @param {string} path
+ * @returns {string}
+ */
+export function resolvePageUrl(path) {
+  if (typeof path !== "string") return "";
+  const trimmed = path.trim();
+  if (!trimmed) return "";
+  if (/^https?:\/\//i.test(trimmed) || trimmed.startsWith("//")) return trimmed;
+  if (typeof document !== "undefined" && document.baseURI) {
+    return new URL(trimmed, document.baseURI).href;
+  }
+  return trimmed;
+}
+
+/**
+ * Normalize a directory YOU host for AvatarJS.
+ * Keep original `files[].name` from GET /v1/avatars/models/{id} in this folder.
+ * All files must share this same directory — AvatarJS loads `{modelUrl}{name}`.
+ * Relative paths are resolved against the page (absolute URL) so Workers do not
+ * prefix `/workers/`. Do not pass API `downloadLink` or `files[].url` (24h temp).
+ *
+ * @param {string} base - e.g. "https://cdn.your-company.com/models/mdl_xxx/"
+ * @returns {string} directory URL with a trailing slash, or ""
+ */
+export function modelUrlFromSelfHost(base) {
+  const resolved = resolvePageUrl(base);
+  if (!resolved) return "";
+  return resolved.endsWith("/") ? resolved : `${resolved}/`;
+}
+
+/**
  * Create and mount a TalkingHead avatar on a canvas.
  *
  * @param {object} opts
  * @param {HTMLCanvasElement} opts.canvas
- * @param {string} opts.modelUrl - downloadLink from GET /avatars/models/{id}
+ * @param {string} opts.modelUrl - directory YOU host (see `modelUrlFromSelfHost`);
+ *   contains every `files[].name` from GET /v1/avatars/models/{id}.
+ *   Not the API `downloadLink` / `files[].url` (those expire in 24h).
  * @param {string} [opts.workerBase="./workers/"] - directory containing both workers
  * @param {() => void} [opts.onReady] - AvatarJS `OnWorkerReady`: model worker ready, safe to `drive`
  * @param {() => void} [opts.onAnimationReady] - AvatarJS `OnAnimationReady`: emote decoded (wrapper calls `startPlay2`)
@@ -72,10 +109,16 @@ export async function createAvatar({
   telemetry = true,
   siteOrigin,
 }) {
+  if (!modelUrl || typeof modelUrl !== "string") {
+    throw new Error(
+      "createAvatar requires modelUrl — host GET /avatars/models/{id} files[] on YOUR server, then pass that directory",
+    );
+  }
   const startedAt = Date.now();
+  const resolvedModelUrl = modelUrlFromSelfHost(modelUrl);
   const base = workerBase.endsWith("/") ? workerBase : `${workerBase}/`;
-  const decoderWorkerUrl = `${base}decoderWorker.js`;
-  const rendererWorkerUrl = `${base}rendererWorker.js`;
+  const decoderWorkerUrl = resolvePageUrl(`${base}decoderWorker.js`);
+  const rendererWorkerUrl = resolvePageUrl(`${base}rendererWorker.js`);
 
   const mod = await loadAvatarJS();
   const AvatarJS = mod.default;
@@ -101,7 +144,7 @@ export async function createAvatar({
     (err) => onError?.(err),
     (percent) => onProgress?.(percent),
     () => onAudioEnd?.(),
-    modelUrl,
+    resolvedModelUrl,
     decoderWorkerUrl,
     rendererWorkerUrl,
   );

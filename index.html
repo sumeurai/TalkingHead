@@ -11,9 +11,10 @@
       <header class="page__header">
         <h1>TalkingHead Web SDK</h1>
         <p>
-          Quick demo uses bundled <code>welcome.wav</code> +
-          <code>welcome-emote.json</code> (no API). Developer mode: your
-          accessKey, modelId, voiceId → TTS or audio +
+          Quick demo: local model files in <code>demo/models/</code>, then remote
+          fallback; hidden if neither works. Developer sandbox: host
+          <code>files[]</code> on <strong>your server</strong>, then connect that
+          directory (do not load API temp URLs). Drive with TTS or audio +
           <code>/audio-to-face/dt</code>. Reusable code in
           <code>sdk/sumeru-drive.js</code>.
           <a href="./docs/TalkingHead-Developer-Guide.md">Developer guide</a>
@@ -59,11 +60,12 @@
               autocomplete="off"
               autocapitalize="off"
               spellcheck="false"
-              placeholder="https://api.sumeruai.us"
+              placeholder="https://overseas.sumeruai.com"
             />
             <p class="field-hint">
-              Site origin only (no <code>/v1</code>) · e.g.
-              <code>https://api.sumeruai.us</code>
+              Gateway origin only (no <code>/v1</code>). Token:
+              <code>POST /v1/access/auth</code> on
+              <code>https://overseas.sumeruai.com</code>
             </p>
           </div>
           <div class="field">
@@ -120,7 +122,8 @@
             />
             <p class="field-hint">
               Required for <code>/audio-to-face/dt</code> · from Studio or
-              <code>GET /v1/avatars/models/{modelId}</code>
+              <code>GET /v1/avatars/models/{modelId}</code>. Poll that GET to
+              download <code>files[]</code> onto your server.
             </p>
           </div>
           <div class="field">
@@ -140,7 +143,7 @@
             </p>
           </div>
           <div class="field" style="grid-column: 1 / -1">
-            <label for="model-url">downloadLink (AvatarJS modelUrl)</label>
+            <label for="model-url">Model directory (your server)</label>
             <textarea
               id="model-url"
               rows="2"
@@ -148,17 +151,36 @@
               autocapitalize="off"
               spellcheck="false"
               name="sumeru-dev-model-url"
-              placeholder="https://oss.sumeruai.com/.../newModels/.../dt/..."
+              placeholder="https://cdn.your-company.com/talkinghead/mdl_xxx/"
             ></textarea>
             <p class="field-hint">
+              Directory <strong>you</strong> host after downloading
               <code>GET /v1/avatars/models/{modelId}</code> →
-              <code>downloadLink</code> · or paste from Mugen3D Studio
+              <code>files[]</code>. All files must share <strong>the same
+              directory</strong> (AvatarJS loads <code>{modelUrl}{name}</code>;
+              keep original <code>name</code>). Same-origin relative path works
+              too, e.g. <code>./my-model/</code>. Do not paste API
+              <code>downloadLink</code> or <code>files[].url</code> (24h temp).
+              This is <code>createAvatar({ modelUrl })</code>.
             </p>
           </div>
         </div>
+        <label class="file-input">
+          Model files (optional — list names only)
+          <input id="model-files" type="file" multiple />
+        </label>
+        <p class="field-hint" id="model-files-hint">
+          After you download <code>files[]</code>, put them on
+          <strong>your server</strong> (same folder, original names), then paste
+          that directory URL above. Selecting files here does not load the
+          avatar.
+        </p>
         <div class="btn-row">
           <button type="button" class="btn btn-secondary" id="btn-auth">
             Get accessToken
+          </button>
+          <button type="button" class="btn btn-secondary" id="btn-list-files">
+            List API files
           </button>
           <button type="button" class="btn btn-primary" id="btn-load-model">
             Load model
@@ -227,9 +249,10 @@
         >
           <h2>Quick demo · bundled assets</h2>
           <p class="panel-desc">
-            Pre-provisioned model + welcome audio/lip-sync from
-            <code>demo/assets-cache.json</code> and <code>demo/assets/</code>.
-            No accessKey required.
+            Prefers local files in <code>demo/models/</code>, then remote
+            <code>downloadLink</code>. Hidden if neither works. Welcome
+            audio/lip-sync from <code>demo/assets/</code>. No accessKey
+            required.
           </p>
           <div class="cache-panel" id="quick-status"></div>
           <div class="btn-row">

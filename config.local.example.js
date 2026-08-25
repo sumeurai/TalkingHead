@@ -4,6 +4,10 @@
 export default {
   emoteFile: "./demo/assets/welcome-emote.json",
   audioFile: "./demo/assets/welcome.wav",
+  // Quick demo model: local directory first, then downloadLink fallback.
+  // modelDir: "./demo/models/YOUR_MODEL_ID/",
+  // modelFiles: ["fileA", "fileB"],
+  // downloadLink: "",
   // Event ping API origin (createAvatar onReady). Default: https://api.sumeruai.us
   // siteOrigin: "https://api.sumeruai.us",
 };
