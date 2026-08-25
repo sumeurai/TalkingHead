@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+// Companion schema for POST /v1/audio-to-face/dt success body.
+// The gateway wraps A2fChat2dResponse in DtEnvelope.
+
+message DtEnvelope {
+  int32 code = 1;                 // 200 on success
+  string msg = 2;                 // e.g. "a2f_chat_2d请求成功"
+  A2fChat2dResponse data = 3;
+}
+
+// OpenAPI AudioToFaceDTUnpackVO field order.
+message A2fChat2dResponse {
+  int32 fps = 1;
+  int32 num_frames = 2;
+  string model_id = 3;
+  string ABI = 4;
+  string AK = 5;
+  string API = 6;
+  string ATI = 7;
+}

@@ -122,8 +122,11 @@ You already have a TalkingHead **modelId**, clone **voiceId**, and model **files
    Path B — audio:
      use your WAV file as base64
 
-④ POST /v1/audio-to-face/dt { modelId, dialogueBase64, status:"start" }
-   → drive payload (inline AK/ABI/ATI/API or fetch via emoteKey/audioKey)
+④ POST /v1/audio-to-face/dt
+   { status, traceId, modelId, data }   // data = audio Base64; end 允许 ""
+   Accept: application/x-protobuf
+   → protobuf A2fChat2dResponse: fps / num_frames / model_id / ABI / AK / API / ATI
+   → SDK unpacks to AvatarJS drive payload (audio still from your WAV/TTS)
 
 ⑤ avatar.drive(driveData)   // sdk/sumeru-drive.js wraps ③–⑤
 ```
@@ -504,8 +507,8 @@ npx serve .
 
 ## 9. FAQ
 
-**`/dt` returns inline AK/ABI/ATI/API instead of emoteKey URLs?**  
-Some responses return inline fields — `audioToFaceDt` / `sumeru-drive.js` handle both inline and URL formats.
+**`/dt` success is protobuf, not JSON?**  
+Yes. Send `Content-Type: application/json` and `Accept: application/x-protobuf`. Body is `{ status, traceId, modelId, data }` (`data` = current slice Base64; `end` may be `""`). HTTP 200 is binary (`sdk/proto/a2f_chat2d.proto`: envelope `code`/`msg` + `A2fChat2dResponse`); HTTP 400/500 is JSON `{ code, msg }`. `audioToFaceDt` unpacks and still accepts a legacy JSON fallback.
 
 **Lip-sync missing but audio plays?**  
 Use audio and emote from the **same** `/dt` call. Do not mix stale OSS keys from an old run.

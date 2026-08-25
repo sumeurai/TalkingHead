@@ -2,6 +2,7 @@
  * SumeruAI Developer Open API helpers for TalkingHead + AudioToFace (DT).
  * API base: https://overseas.sumeruai.com/v1
  * Token: POST {origin}/v1/access/auth
+ * DT: POST /audio-to-face/dt { status, traceId, modelId, data } → protobuf
  */
 
 export const API_ORIGINS = {
@@ -249,6 +250,269 @@ function bytesToBase64(bytes) {
   return btoa(s);
 }
 
+const PROTOBUF_CT = "application/x-protobuf";
+const DT_MAX_SLICE_SEC = 30;
+
+/** OpenAPI AudioToFaceDTUnpackVO / A2fChat2dResponse field numbers. */
+const A2F_CHAT2D_FIELDS = {
+  1: "fps",
+  2: "num_frames",
+  3: "model_id",
+  4: "ABI",
+  5: "AK",
+  6: "API",
+  7: "ATI",
+};
+
+function looksLikeJsonBytes(bytes) {
+  let i = 0;
+  while (
+    i < bytes.length &&
+    (bytes[i] === 0x20 || bytes[i] === 0x09 || bytes[i] === 0x0a || bytes[i] === 0x0d)
+  ) {
+    i += 1;
+  }
+  return bytes[i] === 0x7b || bytes[i] === 0x5b;
+}
+
+function readVarint(bytes, offset) {
+  let result = 0;
+  let shift = 0;
+  while (offset < bytes.length) {
+    const b = bytes[offset];
+    offset += 1;
+    result |= (b & 0x7f) << shift;
+    if ((b & 0x80) === 0) return { value: result >>> 0, offset };
+    shift += 7;
+    if (shift > 35) throw new Error("protobuf varint too long");
+  }
+  throw new Error("truncated protobuf varint");
+}
+
+/** Decode proto3 key/value pairs (varint + length-delimited). */
+export function inspectProtobufFields(bytes) {
+  const fields = [];
+  let offset = 0;
+  while (offset < bytes.length) {
+    const tag = readVarint(bytes, offset);
+    offset = tag.offset;
+    const fieldNumber = tag.value >>> 3;
+    const wireType = tag.value & 7;
+    if (wireType === 0) {
+      const v = readVarint(bytes, offset);
+      offset = v.offset;
+      fields.push({ n: fieldNumber, wire: "varint", value: v.value });
+    } else if (wireType === 1) {
+      offset += 8;
+      fields.push({ n: fieldNumber, wire: "fixed64" });
+    } else if (wireType === 2) {
+      const len = readVarint(bytes, offset);
+      offset = len.offset;
+      const payload = bytes.subarray(offset, offset + len.value);
+      offset += len.value;
+      fields.push({ n: fieldNumber, wire: "bytes", value: payload, bytes: payload.length });
+    } else if (wireType === 5) {
+      offset += 4;
+      fields.push({ n: fieldNumber, wire: "fixed32" });
+    } else {
+      throw new Error(`unsupported protobuf wire type ${wireType} at field ${fieldNumber}`);
+    }
+  }
+  return fields;
+}
+
+function utf8(bytes) {
+  return new TextDecoder().decode(bytes);
+}
+
+function normalizeDtUnpack(data) {
+  if (!data || typeof data !== "object") return data;
+  return {
+    fps: data.fps ?? 25,
+    num_frames: data.num_frames,
+    modelId: data.modelId ?? data.model_id,
+    model_id: data.model_id ?? data.modelId,
+    ABI: data.ABI ?? data.abi,
+    AK: data.AK ?? data.ak,
+    API: data.API ?? data.api,
+    ATI: data.ATI ?? data.ati,
+    emoteKey: data.emoteKey,
+    audioKey: data.audioKey,
+    audioBase64: data.audioBase64,
+    audio: data.audio,
+  };
+}
+
+function unpackedHasEmote(data) {
+  return Boolean(data?.AK && data?.ABI && data?.ATI && data?.API) || Boolean(data?.emoteKey);
+}
+
+function mapA2fFields(fields) {
+  const out = {};
+  for (const f of fields) {
+    const name = A2F_CHAT2D_FIELDS[f.n];
+    if (!name) continue;
+    if (f.wire === "varint") out[name] = f.value;
+    else if (f.wire === "bytes") out[name] = utf8(f.value);
+  }
+  return normalizeDtUnpack(out);
+}
+
+function decodeInnerA2f(bytes) {
+  return mapA2fFields(inspectProtobufFields(bytes));
+}
+
+/**
+ * Unpack POST /audio-to-face/dt success body.
+ * Live gateway wraps A2fChat2dResponse:
+ *   1:code (varint, 200)  2:msg (string)  3:A2fChat2dResponse
+ */
+export function decodeA2fChat2dResponse(bytes) {
+  const fields = inspectProtobufFields(bytes);
+  const codeField = fields.find((f) => f.n === 1 && f.wire === "varint");
+  const dataField = fields.find((f) => f.n === 3 && f.wire === "bytes");
+  if (codeField?.value === 200 && dataField?.value?.length) {
+    const inner = decodeInnerA2f(dataField.value);
+    if (unpackedHasEmote(inner)) return inner;
+  }
+
+  const mapped = decodeInnerA2f(bytes);
+  if (unpackedHasEmote(mapped)) return mapped;
+
+  for (const f of fields) {
+    if (f.wire !== "bytes" || !f.value?.length) continue;
+    if (looksLikeJsonBytes(f.value)) {
+      try {
+        const json = JSON.parse(utf8(f.value));
+        const inner = normalizeDtUnpack(json.data && json.AK == null ? json.data : json);
+        if (unpackedHasEmote(inner)) return inner;
+      } catch {
+        /* not JSON */
+      }
+    }
+    try {
+      const nested = decodeInnerA2f(f.value);
+      if (unpackedHasEmote(nested)) return nested;
+    } catch {
+      /* not nested proto */
+    }
+  }
+
+  throw new Error("Failed to unpack A2fChat2dResponse (fps/num_frames/model_id/ABI/AK/API/ATI)");
+}
+
+function parseJsonObject(text) {
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error(text || "Invalid JSON");
+  }
+}
+
+async function readDtHttpResponse(res) {
+  const buf = new Uint8Array(await res.arrayBuffer());
+  const ct = res.headers.get("content-type") || "";
+  const asText = () => new TextDecoder().decode(buf);
+
+  if (!res.ok || looksLikeJsonBytes(buf) || (ct.includes("json") && !ct.includes("protobuf"))) {
+    if (!buf.byteLength) {
+      throw new Error(`POST /audio-to-face/dt failed (HTTP ${res.status})`);
+    }
+    const json = parseJsonObject(asText());
+    if (json.code != null && json.code !== 200) {
+      throw new Error(json.msg || `Audio-to-face DT failed (${json.code})`);
+    }
+    if (!res.ok) {
+      throw new Error(json.msg || `POST /audio-to-face/dt failed (HTTP ${res.status})`);
+    }
+    return normalizeDtUnpack(json.data ?? json);
+  }
+
+  if (res.status === 404) {
+    throw new Error("POST /audio-to-face/dt returned 404 — check API deployment");
+  }
+  if (!buf.byteLength) return {};
+  return decodeA2fChat2dResponse(buf);
+}
+
+function isWav(bytes) {
+  return (
+    bytes.length >= 44 &&
+    bytes[0] === 0x52 &&
+    bytes[1] === 0x49 &&
+    bytes[2] === 0x46 &&
+    bytes[3] === 0x46 &&
+    bytes[8] === 0x57 &&
+    bytes[9] === 0x41 &&
+    bytes[10] === 0x56 &&
+    bytes[11] === 0x45
+  );
+}
+
+function wavDurationSec(bytes) {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const byteRate = view.getUint32(28, true);
+  const dataSize = view.getUint32(40, true);
+  if (!byteRate) return 0;
+  return dataSize / byteRate;
+}
+
+function wrapWavChunk(headerSrc, pcm) {
+  const out = new Uint8Array(44 + pcm.length);
+  out.set(headerSrc.subarray(0, 44), 0);
+  out.set(pcm, 44);
+  const view = new DataView(out.buffer);
+  view.setUint32(4, 36 + pcm.length, true);
+  view.setUint32(40, pcm.length, true);
+  return out;
+}
+
+/** Split wav/mp3 Base64 into ≤30s slices (WAV PCM). Non-WAV is sent as one slice. */
+export function splitAudioBase64ForDt(audioBase64) {
+  if (!audioBase64) return [""];
+  const bytes = base64ToBytes(audioBase64);
+  if (!isWav(bytes) || wavDurationSec(bytes) <= DT_MAX_SLICE_SEC) return [audioBase64];
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const blockAlign = view.getUint16(32, true) || 1;
+  const byteRate = view.getUint32(28, true);
+  const maxData = Math.max(blockAlign, Math.floor((DT_MAX_SLICE_SEC * byteRate) / blockAlign) * blockAlign);
+  const pcm = bytes.subarray(44);
+  const slices = [];
+  for (let off = 0; off < pcm.length; off += maxData) {
+    slices.push(bytesToBase64(wrapWavChunk(bytes, pcm.subarray(off, off + maxData))));
+  }
+  return slices.length ? slices : [audioBase64];
+}
+
+function concatB64(a, b) {
+  if (!a) return b || "";
+  if (!b) return a;
+  const left = base64ToBytes(a);
+  const right = base64ToBytes(b);
+  const out = new Uint8Array(left.length + right.length);
+  out.set(left, 0);
+  out.set(right, left.length);
+  return bytesToBase64(out);
+}
+
+function mergeDtUnpack(parts) {
+  if (!parts.length) return null;
+  if (parts.length === 1) return parts[0];
+  const first = parts[0];
+  const merged = { ...first };
+  for (let i = 1; i < parts.length; i++) {
+    const p = parts[i];
+    merged.AK = concatB64(merged.AK, p.AK);
+    merged.ABI = concatB64(merged.ABI, p.ABI);
+    merged.ATI = concatB64(merged.ATI, p.ATI);
+    merged.API = concatB64(merged.API, p.API);
+    merged.num_frames = (merged.num_frames || 0) + (p.num_frames || 0);
+    merged.modelId = merged.modelId || p.modelId;
+    merged.model_id = merged.model_id || p.model_id;
+  }
+  return merged;
+}
+
 export { base64ToBytes };
 
 export function blobToBase64(blob) {
@@ -336,6 +600,7 @@ export async function packAtfDriveData({ emoteKey, audioKey, fps }) {
  */
 export async function packAtfFromDtResponse(data, audioBase64) {
   if (!data) throw new Error("Empty ATF data");
+  data = normalizeDtUnpack(data);
 
   if (data.emoteKey && data.audioKey) {
     return packAtfDriveData({
@@ -366,7 +631,7 @@ export async function packAtfFromDtResponse(data, audioBase64) {
       ATI: data.ATI,
       API: data.API,
       fps: data.fps ?? 25,
-      modelId: data.modelId,
+      modelId: data.modelId ?? data.model_id,
       num_frames: data.num_frames,
       audioArray,
       status: "end",
@@ -376,34 +641,68 @@ export async function packAtfFromDtResponse(data, audioBase64) {
   throw new Error("Unexpected ATF response — missing emoteKey or AK/ABI/ATI/API");
 }
 
-/** POST /audio-to-face/dt — raw `data` object (emoteKey/audioKey or inline AK/ABI). */
-export async function requestAudioToFaceDt(token, { modelId, audioBase64, traceId }) {
+/**
+ * POST /audio-to-face/dt — one slice.
+ * Body: { status, traceId, modelId, data }. Success is protobuf; errors are JSON.
+ */
+export async function requestAudioToFaceDt(
+  token,
+  { modelId, audioBase64, traceId, status = "start" },
+) {
+  if (!modelId) throw new Error("modelId is required for POST /audio-to-face/dt");
+  const data = status === "end" ? (audioBase64 ?? "") : (audioBase64 ?? "");
+  if (status !== "end" && !data) {
+    throw new Error("data (audio Base64) is required on start/middle");
+  }
   const res = await fetch(`${getApiBase()}/audio-to-face/dt`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
+      Accept: PROTOBUF_CT,
     },
     body: JSON.stringify({
-      modelId,
+      status,
       traceId: traceId ?? crypto.randomUUID(),
-      status: "start",
-      dialogueBase64: audioBase64,
-      lastDialogueBase64: "",
+      modelId,
+      data,
     }),
   });
   if (res.status === 404) {
     throw new Error("POST /audio-to-face/dt returned 404 — check API deployment");
   }
-  const json = await parseJson(res);
-  if (json.code !== 200) throw new Error(json.msg || "Audio-to-face DT failed");
-  return json.data;
+  return readDtHttpResponse(res);
 }
 
-/** POST /audio-to-face/dt → AvatarJS drive payload */
+/** POST /audio-to-face/dt → AvatarJS drive payload (start/middle/end + protobuf unpack). */
 export async function audioToFaceDt(token, { modelId, audioBase64, traceId }) {
-  const data = await requestAudioToFaceDt(token, { modelId, audioBase64, traceId });
-  return packAtfFromDtResponse(data, audioBase64);
+  const tid = traceId ?? crypto.randomUUID();
+  const slices = splitAudioBase64ForDt(audioBase64);
+  const parts = [];
+  for (let i = 0; i < slices.length; i++) {
+    const unpacked = await requestAudioToFaceDt(token, {
+      modelId,
+      audioBase64: slices[i],
+      traceId: tid,
+      status: i === 0 ? "start" : "middle",
+    });
+    if (unpackedHasEmote(unpacked)) parts.push(unpacked);
+  }
+  try {
+    const end = await requestAudioToFaceDt(token, {
+      modelId,
+      audioBase64: "",
+      traceId: tid,
+      status: "end",
+    });
+    if (unpackedHasEmote(end)) parts.push(end);
+  } catch (err) {
+    if (!parts.length) throw err;
+  }
+  if (!parts.length) {
+    throw new Error("POST /audio-to-face/dt returned no lip-sync frames");
+  }
+  return packAtfFromDtResponse(mergeDtUnpack(parts), audioBase64);
 }
 
 /** Persist emote + optional WAV (base64) for Play welcome after reload. */

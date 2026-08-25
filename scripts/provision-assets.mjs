@@ -15,12 +15,14 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { audioToFaceDt, setApiOrigin } from "../sdk/sumeru-atf-api.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
 
 const API_ORIGIN = process.env.API_ORIGIN ?? "https://overseas.sumeruai.com";
 const API_BASE = `${API_ORIGIN.replace(/\/$/, "")}/v1`;
+setApiOrigin(API_ORIGIN);
 
 const ACCESS_KEY = process.env.ACCESS_KEY ?? "";
 const SECRET_KEY = process.env.SECRET_KEY ?? "";
@@ -139,14 +141,6 @@ function mergeWavBase64Parts(base64Parts) {
     off += d.length;
   }
   return out.toString("base64");
-}
-
-async function fetchEmoteFromUrl(emoteKey) {
-  const res = await fetch(emoteKey);
-  if (!res.ok) throw new Error(`emote fetch ${res.status}`);
-  const ct = res.headers.get("content-type") || "";
-  if (ct.includes("application/json")) return res.json();
-  return JSON.parse(await res.text());
 }
 
 async function main() {
@@ -270,51 +264,18 @@ async function main() {
   console.log("  wrote", WAV_OUT);
 
   console.log("ATF /dt…");
-  const atfRes = await fetch(`${API_BASE}/audio-to-face/dt`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      modelId,
-      traceId: crypto.randomUUID(),
-      status: "start",
-      dialogueBase64: audioBase64,
-      lastDialogueBase64: "",
-    }),
-  });
-  const atfJson = await parseJson(atfRes);
-  if (atfJson.code !== 200) throw new Error(atfJson.msg || "ATF failed");
-  const dt = atfJson.data;
-
-  let emotePayload;
-  let audioKey = dt.audioKey ?? "";
-  let emoteKey = dt.emoteKey ?? "";
-  const fps = dt.fps ?? 25;
-
-  if (dt.AK && dt.ABI && dt.ATI && dt.API) {
-    emotePayload = {
-      fps,
-      modelId,
-      AK: dt.AK,
-      ABI: dt.ABI,
-      ATI: dt.ATI,
-      API: dt.API,
-    };
-  } else if (emoteKey?.startsWith("http")) {
-    const raw = await fetchEmoteFromUrl(emoteKey);
-    emotePayload = {
-      fps,
-      modelId,
-      AK: raw.AK ?? raw.data?.AK,
-      ABI: raw.ABI ?? raw.data?.ABI,
-      ATI: raw.ATI ?? raw.data?.ATI,
-      API: raw.API ?? raw.data?.API,
-    };
-  } else {
-    throw new Error("Unexpected /dt response — no inline AK or emoteKey URL");
-  }
+  const drive = await audioToFaceDt(token, { modelId, audioBase64 });
+  const emotePayload = {
+    fps: drive.fps ?? 25,
+    modelId,
+    AK: drive.AK,
+    ABI: drive.ABI,
+    ATI: drive.ATI,
+    API: drive.API,
+  };
+  const audioKey = "";
+  const emoteKey = "";
+  const fps = emotePayload.fps;
 
   fs.writeFileSync(EMOTE_OUT, JSON.stringify(emotePayload));
   console.log("  wrote", EMOTE_OUT, `(${(fs.statSync(EMOTE_OUT).size / 1024).toFixed(0)} KB)`);
