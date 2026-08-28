@@ -14,8 +14,8 @@
           Quick demo: local model files in <code>demo/models/</code>, then remote
           fallback; hidden if neither works. Developer sandbox: host
           <code>files[]</code> on <strong>your server</strong>, then connect that
-          directory (do not load API temp URLs). Drive with TTS or audio +
-          <code>/audio-to-face/dt</code>. Reusable code in
+          directory (do not load API temp URLs). Drive with your audio +
+          <code>/audio-to-face/dt</code> (lip-sync only). Reusable code in
           <code>sdk/sumeru-drive.js</code>.
           <a href="./docs/TalkingHead-Developer-Guide.md">Developer guide</a>
         </p>
@@ -126,22 +126,6 @@
               download <code>files[]</code> onto your server.
             </p>
           </div>
-          <div class="field">
-            <label for="voice-id">voiceId</label>
-            <input
-              id="voice-id"
-              type="text"
-              autocomplete="off"
-              autocapitalize="off"
-              spellcheck="false"
-              name="sumeru-dev-voice-id"
-              placeholder="e.g. 1463380813701120"
-            />
-            <p class="field-hint">
-              Clone voice for TTS · <code>POST /v1/tts</code> with
-              <code>voiceId</code>
-            </p>
-          </div>
           <div class="field" style="grid-column: 1 / -1">
             <label for="model-url">Model directory (your server)</label>
             <textarea
@@ -190,31 +174,8 @@
         <h2 style="margin-top: 20px">2 · Drive lip-sync</h2>
         <p class="panel-desc">
           Same helpers as <code>sdk/sumeru-drive.js</code> — copy into your app.
+          <code>/dt</code> returns lip-sync only; playback uses the audio you upload.
         </p>
-        <div class="form-grid">
-          <div class="field" style="grid-column: 1 / -1">
-            <label for="drive-text">Script (text → TTS → /dt)</label>
-            <textarea
-              id="drive-text"
-              rows="4"
-              autocomplete="off"
-              autocapitalize="off"
-              spellcheck="false"
-              name="sumeru-dev-drive-text"
-              placeholder="Enter text for TTS, then lip-sync and play"
-            ></textarea>
-          </div>
-        </div>
-        <div class="btn-row">
-          <button
-            type="button"
-            class="btn btn-primary"
-            id="btn-drive-text"
-            disabled
-          >
-            Text → TTS + /dt + Play
-          </button>
-        </div>
         <label class="file-input">
           Audio file (audio → /dt)
           <input id="audio-file" type="file" accept="audio/*,.wav" />
@@ -225,7 +186,7 @@
         <div class="btn-row">
           <button
             type="button"
-            class="btn btn-secondary"
+            class="btn btn-primary"
             id="btn-drive-audio"
             disabled
           >

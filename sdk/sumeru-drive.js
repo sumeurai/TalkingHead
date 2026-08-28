@@ -1,19 +1,14 @@
 /**
- * Drive a mounted TalkingHead avatar from audio or TTS text.
+ * Drive a mounted TalkingHead avatar from audio + /audio-to-face/dt.
+ * /dt returns lip-sync only (AK/ABI/ATI/API). Playback audio is the file you send.
  * Use after createAvatar() + auth — same flow as Developer sandbox.
  */
 
-import { synthesizeTtsLong, audioToFaceDt, blobToBase64 } from "./sumeru-atf-api.js";
+import { audioToFaceDt, blobToBase64 } from "./sumeru-atf-api.js";
 
-/** POST /audio-to-face/dt → AvatarJS drive payload. */
+/** POST /audio-to-face/dt → AvatarJS drive payload (your audio + unpacked lip-sync). */
 export async function buildDriveFromAudioBase64(token, { modelId, audioBase64 }) {
   return audioToFaceDt(token, { modelId, audioBase64 });
-}
-
-/** TTS → buildDriveFromAudioBase64. Long text is split automatically. */
-export async function buildDriveFromText(token, { modelId, voiceId, text, onChunk }) {
-  const audioBase64 = await synthesizeTtsLong(token, { text, voiceId, onChunk });
-  return buildDriveFromAudioBase64(token, { modelId, audioBase64 });
 }
 
 /** Local audio file → buildDriveFromAudioBase64. */
@@ -36,12 +31,6 @@ export function playDriveOnAvatar(avatar, driveData) {
 /** Audio base64 → /dt → play. */
 export async function driveFromAudioBase64(avatar, token, { modelId, audioBase64 }) {
   const driveData = await buildDriveFromAudioBase64(token, { modelId, audioBase64 });
-  return playDriveOnAvatar(avatar, driveData);
-}
-
-/** Text + voiceId → TTS → /dt → play. */
-export async function driveFromText(avatar, token, { modelId, voiceId, text, onChunk }) {
-  const driveData = await buildDriveFromText(token, { modelId, voiceId, text, onChunk });
   return playDriveOnAvatar(avatar, driveData);
 }
 

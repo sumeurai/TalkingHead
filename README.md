@@ -39,11 +39,9 @@ npx serve .
 ### Developer sandbox tab
 
 - Canvas: created on **Load model** as `#dev-avatar-canvas` (separate from Quick demo)
-- Form fields start **empty** — paste your own `accessKey`, `secretKey`, `modelId`, **hosted model directory**, `voiceId`
+- Form fields start **empty** — paste your own `accessKey`, `secretKey`, `modelId`, **hosted model directory**
 - Host `GET /avatars/models/{id}` → `files[]` on **your server** in **one directory** (same prefix for every `name`), then paste that directory (do not use API temp URLs)
-- **Get accessToken** → **Load model** → either:
-  - **Text → TTS + /dt + Play** (uses `voiceId`)
-  - **Audio → /dt + Play** (upload WAV/audio)
+- **Get accessToken** → **Load model** → **Audio → /dt + Play** (upload WAV/audio; `/dt` returns lip-sync only)
 - Same flow as [`sdk/sumeru-drive.js`](./sdk/sumeru-drive.js) — copy into your app
 - Switching tabs **stops** playback; each mode keeps its own canvas
 
@@ -92,7 +90,7 @@ ACCESS_KEY=... SECRET_KEY=... VOICE_ID=... MODEL_ID=... DOWNLOAD_LINK=... \
 ```javascript
 import { createAvatar, modelUrlFromSelfHost } from "./sdk/sumeru-avatar.js";
 import { auth } from "./sdk/sumeru-atf-api.js";
-import { driveFromText } from "./sdk/sumeru-drive.js";
+import { driveFromAudioFile } from "./sdk/sumeru-drive.js";
 
 const token = await auth(accessKey, secretKey);
 const avatar = await createAvatar({
@@ -101,11 +99,7 @@ const avatar = await createAvatar({
   workerBase: "./workers/",
 });
 
-await driveFromText(avatar, token, {
-  modelId,
-  voiceId,
-  text: "Hello!",
-});
+await driveFromAudioFile(avatar, token, { modelId, file: wavFile });
 ```
 
 See the [Developer Guide](./docs/TalkingHead-Developer-Guide.md) for the full Open API flow, [minimal copy checklist](./docs/TalkingHead-Developer-Guide.md#40-minimal-integration-files-to-copy), and [`sumeru-avatar.js` API](./docs/TalkingHead-Developer-Guide.md#74-sdk-sumeru-avatarjs).

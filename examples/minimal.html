@@ -37,53 +37,37 @@
       <code>MODEL_URL</code> must be a directory <strong>you</strong> host
       (downloaded <code>files[]</code>, original names) — not the API temp
       <code>downloadLink</code>.
+      <code>/dt</code> returns lip-sync only; you supply the audio.
     </p>
     <div class="stage"><canvas id="c"></canvas></div>
-    <button type="button" id="drive-text" disabled>Text → TTS + /dt</button>
     <button type="button" id="drive-audio" disabled>Audio file → /dt</button>
 
     <script type="module">
       import { createAvatar } from "../sdk/sumeru-avatar.js";
       import { auth } from "../sdk/sumeru-atf-api.js";
-      import {
-        driveFromText,
-        driveFromAudioFile,
-      } from "../sdk/sumeru-drive.js";
+      import { driveFromAudioFile } from "../sdk/sumeru-drive.js";
 
       const ACCESS_KEY = "";
       const SECRET_KEY = "";
       // Your hosted model directory (files[] from GET /avatars/models/{id})
       const MODEL_URL = "";
       const MODEL_ID = "";
-      const VOICE_ID = "";
-      const SCRIPT = "Hello, this is a minimal TalkingHead lip-sync example.";
 
-      const btnText = document.getElementById("drive-text");
       const btnAudio = document.getElementById("drive-audio");
       let avatar = null;
       let token = "";
 
-      if (MODEL_URL && ACCESS_KEY && SECRET_KEY && MODEL_ID && VOICE_ID) {
+      if (MODEL_URL && ACCESS_KEY && SECRET_KEY && MODEL_ID) {
         token = await auth(ACCESS_KEY, SECRET_KEY);
         avatar = await createAvatar({
           canvas: document.getElementById("c"),
           modelUrl: MODEL_URL,
           workerBase: "../workers/",
           onReady: () => {
-            btnText.disabled = false;
             btnAudio.disabled = false;
           },
         });
       }
-
-      btnText.addEventListener("click", async () => {
-        if (!avatar) return;
-        await driveFromText(avatar, token, {
-          modelId: MODEL_ID,
-          voiceId: VOICE_ID,
-          text: SCRIPT,
-        });
-      });
 
       btnAudio.addEventListener("click", async () => {
         if (!avatar) return;

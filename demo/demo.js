@@ -7,7 +7,7 @@ import {
   setApiOrigin,
   getApiBase,
 } from "../sdk/sumeru-atf-api.js";
-import { driveFromText, driveFromAudioFile } from "../sdk/sumeru-drive.js";
+import { driveFromAudioFile } from "../sdk/sumeru-drive.js";
 import {
   loadAssetsCache,
   buildBundledDrive,
@@ -75,18 +75,15 @@ const els = {
   accessKey: $("#access-key"),
   secretKey: $("#secret-key"),
   accessToken: $("#access-token"),
-  voiceId: $("#voice-id"),
   modelId: $("#model-id"),
   modelUrl: $("#model-url"),
   modelFiles: $("#model-files"),
   modelFilesHint: $("#model-files-hint"),
-  driveText: $("#drive-text"),
   audioFile: $("#audio-file"),
   audioFileHint: $("#audio-file-hint"),
   btnAuth: $("#btn-auth"),
   btnListFiles: $("#btn-list-files"),
   btnLoadModel: $("#btn-load-model"),
-  btnDriveText: $("#btn-drive-text"),
   btnDriveAudio: $("#btn-drive-audio"),
   btnDevStop: $("#btn-dev-stop"),
   apiEnv: $("#api-env"),
@@ -152,7 +149,6 @@ function shortUrl(url) {
 }
 
 function setDeveloperControlsEnabled(enabled) {
-  els.btnDriveText.disabled = !enabled;
   els.btnDriveAudio.disabled = !enabled;
   els.btnDevStop.disabled = !enabled;
 }
@@ -220,9 +216,7 @@ function clearDeveloperForm() {
     els.secretKey,
     els.accessToken,
     els.modelId,
-    els.voiceId,
     els.modelUrl,
-    els.driveText,
   ]) {
     if (el) el.value = "";
   }
@@ -646,40 +640,6 @@ async function handleLoadModel() {
   }
 }
 
-async function handleDriveFromText() {
-  const modelId = els.modelId.value.trim();
-  const voiceId = els.voiceId.value.trim();
-  const text = els.driveText.value.trim();
-  if (!modelId || !voiceId || !text) {
-    log("Need modelId, voiceId, and script text", "err");
-    return;
-  }
-  if (!developer.avatar?.isReady) {
-    log("Load model first", "err");
-    return;
-  }
-
-  els.btnDriveText.disabled = true;
-  setDevBadge("TTS…", false);
-  try {
-    const token = await ensureAuth();
-    log("TTS + POST /audio-to-face/dt…", "ok");
-    await driveFromText(developer.avatar, token, {
-      modelId,
-      voiceId,
-      text,
-      onChunk: log,
-    });
-    setDevBadge("Playing", true);
-    log("Playing lip-sync", "ok");
-  } catch (e) {
-    log(e instanceof Error ? e.message : String(e), "err");
-    setDevBadge("Error", false);
-  } finally {
-    if (developer.avatar?.isReady) els.btnDriveText.disabled = false;
-  }
-}
-
 async function handleDriveFromAudio() {
   const modelId = els.modelId.value.trim();
   const file = els.audioFile.files?.[0];
@@ -723,7 +683,6 @@ els.btnQuickStop?.addEventListener("click", handleQuickStop);
 els.btnAuth?.addEventListener("click", handleAuth);
 els.btnListFiles?.addEventListener("click", handleListFiles);
 els.btnLoadModel?.addEventListener("click", handleLoadModel);
-els.btnDriveText?.addEventListener("click", handleDriveFromText);
 els.btnDriveAudio?.addEventListener("click", handleDriveFromAudio);
 els.btnDevStop?.addEventListener("click", handleDevStop);
 if (els.apiEnv) els.apiEnv.addEventListener("change", handleEnvChange);

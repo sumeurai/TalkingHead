@@ -105,7 +105,6 @@ async function main() {
         apiOrigin: API_ORIGIN.replace(/\/$/, ""),
         accessToken: token,
         modelId: MODEL_ID,
-        voiceId: VOICE_ID,
         modelUrl: "(host files[] on YOUR server, then paste that directory URL)",
         files: modelRes.data?.files ?? [],
       },
@@ -114,9 +113,6 @@ async function main() {
     ),
   );
 
-  if (voiceRes.code === 200 && String(voiceRes.data?.status) !== "1") {
-    console.warn("\nNote: voice is not ready (status !== 1). TTS may fail.");
-  }
   if (modelRes.code === 200 && String(modelRes.data?.status) !== "1") {
     console.warn("\nNote: model is not ready. Wait or poll GET /avatars/models/{id}.");
   }

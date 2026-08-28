@@ -17,9 +17,9 @@ This guide explains how to use the **SumeruAI Developer Open API** and the SDK i
 
 | Module                  | Responsibility                                | Typical imports                                            |
 | ----------------------- | --------------------------------------------- | ---------------------------------------------------------- |
-| `sdk/sumeru-atf-api.js`     | HTTP: auth, TTS, `/audio-to-face/dt`, helpers | `auth`, `audioToFaceDt`, `synthesizeTtsLong`               |
+| `sdk/sumeru-atf-api.js`     | HTTP: auth, `/audio-to-face/dt`, optional TTS helpers | `auth`, `audioToFaceDt`                              |
 | `sdk/sumeru-avatar.js`      | Load AvatarJS, mount canvas, playback control | `createAvatar`, `cloneDrivePayload`                        |
-| `sdk/sumeru-drive.js`       | Build drive payload + play orchestration      | `driveFromText`, `driveFromAudioFile`, `playDriveOnAvatar` |
+| `sdk/sumeru-drive.js`       | Build drive payload + play orchestration      | `driveFromAudioFile`, `playDriveOnAvatar`                  |
 | `sdk/sumeru-event-stats.js` | Open API funnel ping (no token)               | `incrementEventStat`, `setApiOrigin`                       |
 
 **Rule of thumb:** use `createAvatar()` for rendering; prefer `sumeru-drive.js` for the auth → TTS → `/dt` → play pipeline. Call `avatar.drive()` directly only when you already have a drive payload or need custom streaming.
@@ -65,12 +65,9 @@ Usage: the page auto-loads the bundled model on **`#quick-avatar-canvas`** when 
 
 ### 3.2 Developer sandbox
 
-Bring your own **accessKey**, **modelId**, **voiceId**, and a **model directory you host**. Uses a **separate `#dev-avatar-canvas`** — nothing renders until **Load model**.
+Bring your own **accessKey**, **modelId**, and a **model directory you host**. Uses a **separate `#dev-avatar-canvas`** — nothing renders until **Load model**.
 
-Usage: switch to **Developer sandbox** → fill keys / `modelId` / `voiceId` → host `files[]` on **your server** → paste that directory URL → **Load model** (creates `#dev-avatar-canvas`) → either:
-
-- **Text → TTS + /dt + Play** — script + `voiceId`
-- **Audio → /dt + Play** — upload WAV/audio
+Usage: switch to **Developer sandbox** → fill keys / `modelId` → host `files[]` on **your server** → paste that directory URL → **Load model** (creates `#dev-avatar-canvas`) → **Audio → /dt + Play**. `/dt` returns lip-sync only; you supply the audio.
 
 The same calls live in **`sdk/sumeru-drive.js`** for copy-paste into your app. **Switching back to Quick demo stops playback.**
 
@@ -105,7 +102,7 @@ your-app/
 - [ ] Call `avatar.stop()` before the next clip; call `avatar.destroy()` when leaving the page or swapping models
 - [ ] Use a **dedicated `<canvas>`** per avatar instance — do not reuse a canvas after `transferControlToOffscreen` (see §7.5)
 
-You already have a TalkingHead **modelId**, clone **voiceId**, and model **files** hosted on **your server**. In the browser:
+You already have a TalkingHead **modelId**, audio, and model **files** hosted on **your server**. In the browser:
 
 ```
 ① POST /v1/access/auth
@@ -117,16 +114,14 @@ You already have a TalkingHead **modelId**, clone **voiceId**, and model **files
    → createAvatar({ modelUrl: "https://your-cdn/.../mdl_xxx/" })
    Do not pass downloadLink or files[].url into createAvatar.
 
-③ Path A — text:
-     POST /v1/tts { content, voiceId } → audioBase64
-   Path B — audio:
-     use your WAV file as base64
+③ Your WAV/audio as base64
+   /dt does not return audio — keep this clip for playback.
 
 ④ POST /v1/audio-to-face/dt
    { status, traceId, modelId, data }   // data = audio Base64; end 允许 ""
    Accept: application/x-protobuf
    → protobuf A2fChat2dResponse: fps / num_frames / model_id / ABI / AK / API / ATI
-   → SDK unpacks to AvatarJS drive payload (audio still from your WAV/TTS)
+   → SDK unpacks lip-sync and attaches your audio as audioArray
 
 ⑤ avatar.drive(driveData)   // sdk/sumeru-drive.js wraps ③–⑤
 ```
@@ -136,7 +131,7 @@ Use **`sdk/sumeru-drive.js`**:
 ```javascript
 import { auth } from "./sdk/sumeru-atf-api.js";
 import { createAvatar, modelUrlFromSelfHost } from "./sdk/sumeru-avatar.js";
-import { driveFromText, driveFromAudioFile } from "./sdk/sumeru-drive.js";
+import { driveFromAudioFile } from "./sdk/sumeru-drive.js";
 
 const token = await auth(accessKey, secretKey);
 const avatar = await createAvatar({
@@ -146,8 +141,6 @@ const avatar = await createAvatar({
 });
 // wait for onReady…
 
-await driveFromText(avatar, token, { modelId, voiceId, text: "Hello!" });
-// or
 await driveFromAudioFile(avatar, token, { modelId, file: wavFile });
 ```
 
@@ -209,9 +202,7 @@ Do **not** pass `downloadLink` or `files[].url` into `modelUrl`. Poll the API on
 | Model directory   | **Your** server / same-origin folder after you download `files[]`             |
 | Model files input | Optional checklist of names — does **not** load the avatar                    |
 | List API files    | Polls `files[]` so you know what to host                                      |
-| voiceId           | Clone voice used with `POST /v1/tts`                                          |
-| script text       | Your copy → **Text → TTS + /dt + Play**                                       |
-| audio file        | Local WAV → **Audio → /dt + Play**                                            |
+| audio file        | Local WAV → **Audio → /dt + Play** (`/dt` = lip-sync only)                    |
 
 ---
 
@@ -267,7 +258,7 @@ Copy the JSON output into the Developer sandbox form manually. Do not commit tok
 
 | Section | Topic                                          |
 | ------- | ---------------------------------------------- |
-| §7.0    | `sumeru-drive.js` — TTS / `/dt` / play helpers |
+| §7.0    | `sumeru-drive.js` — audio / `/dt` / play helpers |
 | §7.1    | Bundled Quick demo (no API)                    |
 | §7.2    | `avatar.drive()` payload fields                |
 | §7.3    | Lifecycle, callbacks, playback order           |
@@ -277,13 +268,12 @@ Copy the JSON output into the Developer sandbox form manually. Do not commit tok
 
 ### 7.0 `sdk/sumeru-drive.js` (recommended)
 
-| Export                                                               | Description                          |
-| -------------------------------------------------------------------- | ------------------------------------ |
-| `driveFromText(avatar, token, { modelId, voiceId, text, onChunk? })` | TTS → `/dt` → play                   |
-| `driveFromAudioFile(avatar, token, { modelId, file })`               | File → `/dt` → play                  |
-| `driveFromAudioBase64(avatar, token, { modelId, audioBase64 })`      | Base64 WAV → `/dt` → play            |
-| `buildDriveFromText` / `buildDriveFromAudioFile`                     | Return drive payload without playing |
-| `playDriveOnAvatar(avatar, driveData)`                               | Play an existing payload             |
+| Export                                                          | Description                          |
+| --------------------------------------------------------------- | ------------------------------------ |
+| `driveFromAudioFile(avatar, token, { modelId, file })`          | File → `/dt` → play                  |
+| `driveFromAudioBase64(avatar, token, { modelId, audioBase64 })` | Base64 WAV → `/dt` → play            |
+| `buildDriveFromAudioFile` / `buildDriveFromAudioBase64`         | Return drive payload without playing |
+| `playDriveOnAvatar(avatar, driveData)`                          | Play an existing payload             |
 
 See `examples/minimal.html` and `demo/demo.js` (Developer sandbox uses the same imports).
 
@@ -519,8 +509,8 @@ Browsers require a user gesture; click the page then Play. `sumeru-drive.js` cal
 **CORS errors?**  
 Direct browser calls to `api.sumeruai.us` / OSS need server-side CORS for your origin. Test locally with `npx serve .`.
 
-**TTS length limit?**  
-≤150 characters per chunk; `synthesizeTtsLong` splits on sentence boundaries.
+**Does `/dt` return audio?**  
+No. It returns lip-sync only. `sumeru-drive.js` sends your audio as `data` and plays that same clip with the unpacked `AK/ABI/ATI/API`.
 
 **`Avatar not ready — wait for onReady`?**  
 You called `avatar.drive()` before the model worker finished loading. Wait for `onReady` or check `avatar.isReady`.
@@ -532,7 +522,7 @@ The canvas may already be transferred offscreen. Use a **new** `<canvas>` elemen
 You replayed drive data without cloning. Use `avatar.drive()` (not raw `receiveData`) or call `cloneDrivePayload()` first.
 
 **Can I skip `sumeru-drive.js`?**  
-Yes. Build the payload with `sumeru-atf-api.js` (`auth`, `synthesizeTtsLong`, `audioToFaceDt`) and call `avatar.unlockAudio()` + `avatar.drive()` yourself.
+Yes. Build the payload with `sumeru-atf-api.js` (`auth`, `audioToFaceDt`) and call `avatar.unlockAudio()` + `avatar.drive()` yourself.
 
 **Should I pass `downloadLink` into `createAvatar`?**  
 No. Poll `GET /v1/avatars/models/{modelId}` until `status=1`, download every `files[]` item (24h URLs) into **one directory on your server**, keep original `name` (all URLs must share that same prefix), then pass that directory as `modelUrl` (`modelUrlFromSelfHost`).
