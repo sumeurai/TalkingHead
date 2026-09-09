@@ -65,31 +65,26 @@ export async function auth(accessKey, secretKey) {
   return json.data.accessToken;
 }
 
-/** POST /avatars/styles/query */
+/** GET /avatars/styles */
 export async function queryStyles(token) {
-  return apiJson("/avatars/styles/query", {
-    method: "POST",
-    token,
-    headers: { "Content-Type": "application/json" },
-    body: "{}",
-  });
+  return apiJson("/avatars/styles", { token });
 }
 
-/** POST /avatars/styles/generations */
+/** POST /avatars/styles — photoFile is sent as the multipart field file. */
 export async function createStyleGeneration(token, { styleId, photoFile }) {
   const form = new FormData();
-  form.append("photoFile", photoFile, photoFile.name || "photo.jpg");
-  form.append("styleId", String(styleId));
-  return apiJson("/avatars/styles/generations", {
+  form.append("file", photoFile, photoFile.name || "photo.jpg");
+  const query = new URLSearchParams({ styleId: String(styleId) });
+  return apiJson(`/avatars/styles?${query}`, {
     method: "POST",
     token,
     body: form,
   });
 }
 
-/** GET /avatars/styles/generations/{id} */
+/** GET /avatars/styles/results/{id} */
 export async function getStyleGeneration(token, id) {
-  return apiJson(`/avatars/styles/generations/${encodeURIComponent(id)}`, { token });
+  return apiJson(`/avatars/styles/results/${encodeURIComponent(id)}`, { token });
 }
 
 export async function pollStyleGeneration(token, id, opts = {}) {

@@ -15,7 +15,13 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { audioToFaceDt, setApiOrigin } from "../sdk/sumeru-atf-api.js";
+import {
+  audioToFaceDt,
+  createStyleGeneration,
+  pollStyleGeneration,
+  queryStyles,
+  setApiOrigin,
+} from "../sdk/sumeru-atf-api.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
@@ -183,12 +189,7 @@ async function main() {
     console.log("Style + model…");
     let resolvedStyleId = styleIdForCache;
     if (!resolvedStyleId) {
-      const styles = await apiJson("/avatars/styles/query", {
-        method: "POST",
-        token,
-        headers: { "Content-Type": "application/json" },
-        body: "{}",
-      });
+      const styles = await queryStyles(token);
       if (!styles?.[0]?.id) throw new Error("No style templates returned");
       resolvedStyleId = styles[0].id;
       console.log("  using first style from query:", resolvedStyleId);
@@ -196,19 +197,12 @@ async function main() {
       console.log("  using STYLE_ID:", resolvedStyleId);
     }
     const photoBuf = fs.readFileSync(PHOTO_JPG);
-    const styleForm = new FormData();
-    styleForm.append("photoFile", new Blob([photoBuf], { type: "image/jpeg" }), "photo.jpg");
-    styleForm.append("styleId", String(resolvedStyleId));
-    const styleTask = await apiJson("/avatars/styles/generations", {
-      method: "POST",
-      token,
-      body: styleForm,
+    const styleTask = await createStyleGeneration(token, {
+      styleId: resolvedStyleId,
+      photoFile: new Blob([photoBuf], { type: "image/jpeg" }),
     });
     const styleImgId = styleTask.id;
-    await poll(() => apiJson(`/avatars/styles/generations/${styleImgId}`, { token }), {
-      ok: (d) => String(d.status) === "1",
-      fail: (d) => String(d.status) === "4",
-    });
+    await pollStyleGeneration(token, styleImgId, { intervalMs: 3000, timeoutMs: 600000 });
 
     const modelForm = new FormData();
     modelForm.append("file", new Blob([photoBuf], { type: "image/jpeg" }), "photo.jpg");
