@@ -15,7 +15,7 @@
           fallback; hidden if neither works. Developer sandbox: host
           <code>files[]</code> on <strong>your server</strong>, then connect that
           directory (do not load API temp URLs). Drive with your audio +
-          <code>/audio-to-face/dt</code> (lip-sync only). Reusable code in
+          <code>/mugen-morph/dt</code> (lip-sync only). Reusable code in
           <code>sdk/sumeru-drive.js</code>.
           <a href="./docs/TalkingHead-Developer-Guide.md">Developer guide</a>
         </p>
@@ -60,12 +60,11 @@
               autocomplete="off"
               autocapitalize="off"
               spellcheck="false"
-              placeholder="https://overseas.sumeruai.com"
+              placeholder="https://api.mugen3d.ai"
             />
             <p class="field-hint">
-              Gateway origin only (no <code>/v1</code>). Token:
-              <code>POST /v1/access/auth</code> on
-              <code>https://overseas.sumeruai.com</code>
+              Gateway origin or <code>/v1</code> base URL. Token:
+              <code>POST /v1/access/auth</code> on the selected gateway.
             </p>
           </div>
           <div class="field">
@@ -121,7 +120,7 @@
               placeholder="e.g. 22086744553208107008"
             />
             <p class="field-hint">
-              Required for <code>/audio-to-face/dt</code> · from Studio or
+              Required for <code>/mugen-morph/dt</code> · from Studio or
               <code>GET /v1/avatars/models/{modelId}</code>. Poll that GET to
               download <code>files[]</code> onto your server.
             </p>
@@ -253,7 +252,7 @@
           >TalkingHead Developer Guide</a
         >
         <a
-          href="https://api.sumeruai.us"
+          href="https://mugen3d.ai/api/developers/docs-api"
           target="_blank"
           rel="noopener noreferrer"
           >Developer API</a

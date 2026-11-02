@@ -1,9 +1,9 @@
 /**
  * Hit Open API event-stats from the SDK helper (no token).
- * Default: https://api.sumeruai.us/v1/event-stats/increment, 5 times.
+ * Default: https://api.mugen3d.ai/v1/event-stats/increment, 5 times.
  *
  *   node scripts/ping-event-stats.mjs
- *   API_ORIGIN=https://api.sumeruai.us TIMES=1 node scripts/ping-event-stats.mjs
+ *   API_ORIGIN=https://api.mugen3d.ai TIMES=1 node scripts/ping-event-stats.mjs
  */
 
 import {

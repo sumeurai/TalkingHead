@@ -38,27 +38,27 @@
       (downloaded <code>files[]</code>, original names) — not the API temp
       <code>downloadLink</code>.
       <code>/dt</code> returns lip-sync only; you supply the audio.
+      Supply a short-lived token from your application server in
+      <code>ACCESS_TOKEN</code> below.
     </p>
     <div class="stage"><canvas id="c"></canvas></div>
     <button type="button" id="drive-audio" disabled>Audio file → /dt</button>
 
     <script type="module">
       import { createAvatar } from "../sdk/sumeru-avatar.js";
-      import { auth } from "../sdk/sumeru-atf-api.js";
       import { driveFromAudioFile } from "../sdk/sumeru-drive.js";
 
-      const ACCESS_KEY = "";
-      const SECRET_KEY = "";
+      // Your application server exchanges keys via POST /v1/access/auth.
+      const ACCESS_TOKEN = "";
       // Your hosted model directory (files[] from GET /avatars/models/{id})
       const MODEL_URL = "";
       const MODEL_ID = "";
 
       const btnAudio = document.getElementById("drive-audio");
       let avatar = null;
-      let token = "";
+      const token = ACCESS_TOKEN;
 
-      if (MODEL_URL && ACCESS_KEY && SECRET_KEY && MODEL_ID) {
-        token = await auth(ACCESS_KEY, SECRET_KEY);
+      if (MODEL_URL && token && MODEL_ID) {
         avatar = await createAvatar({
           canvas: document.getElementById("c"),
           modelUrl: MODEL_URL,

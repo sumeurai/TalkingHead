@@ -6,9 +6,9 @@
  * Uniqueness: localStorage once per browser + `anonId` for server-side distinct.
  */
 
-export const API_ORIGINS = {
-  prod: "https://api.sumeruai.us",
-};
+import { API_ORIGINS, normalizeApiOrigin } from "./sumeru-api-config.js";
+
+export { API_ORIGINS };
 
 /** @deprecated use API_ORIGINS */
 export const SITE_ORIGINS = API_ORIGINS;
@@ -31,10 +31,11 @@ const STORAGE_REPORTED = "sumeru-th-event-2";
 
 let apiOrigin = API_ORIGINS.prod;
 
-/** @param {string} origin — API origin, e.g. https://api.sumeruai.us */
+/** @param {string} origin — API origin, e.g. https://api.mugen3d.ai */
 export function setApiOrigin(origin) {
   if (!origin) return;
-  apiOrigin = origin.replace(/\/$/, "").replace(/\/v1$/i, "");
+  const normalized = normalizeApiOrigin(origin);
+  if (normalized) apiOrigin = normalized;
 }
 
 /** @deprecated use setApiOrigin */

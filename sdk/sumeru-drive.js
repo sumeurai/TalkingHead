@@ -1,14 +1,14 @@
 /**
- * Drive a mounted TalkingHead avatar from audio + /audio-to-face/dt.
+ * Drive a mounted TalkingHead avatar from audio + /mugen-morph/dt.
  * /dt returns lip-sync only (AK/ABI/ATI/API). Playback audio is the file you send.
  * Use after createAvatar() + auth — same flow as Developer sandbox.
  */
 
-import { audioToFaceDt, blobToBase64 } from "./sumeru-atf-api.js";
+import { mugenMorphDt, blobToBase64 } from "./sumeru-mugen-morph-api.js";
 
-/** POST /audio-to-face/dt → AvatarJS drive payload (your audio + unpacked lip-sync). */
+/** POST /mugen-morph/dt → AvatarJS drive payload (your audio + unpacked lip-sync). */
 export async function buildDriveFromAudioBase64(token, { modelId, audioBase64 }) {
-  return audioToFaceDt(token, { modelId, audioBase64 });
+  return mugenMorphDt(token, { modelId, audioBase64 });
 }
 
 /** Local audio file → buildDriveFromAudioBase64. */

@@ -7,7 +7,7 @@ import {
   pollStyleGeneration,
   queryStyles,
   setApiOrigin,
-} from "../sdk/sumeru-atf-api.js";
+} from "../sdk/sumeru-mugen-morph-api.js";
 
 const originalFetch = globalThis.fetch;
 afterEach(() => {

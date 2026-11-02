@@ -2,8 +2,8 @@
 
 Browser runtime demo for **SumeruAI TalkingHead** digital humans. Integrates:
 
-- **Developer Open API** — auth, voice clone, model, TTS, `POST /audio-to-face/dt`
-- **This repo SDK** — `sdk/sumeru-atf-api.js`, `sdk/sumeru-avatar.js`, `sdk/sumeru-drive.js`, `sdk/sumeru-event-stats.js`
+- **Developer Open API** — auth, voice clone, model, TTS, `POST /mugen-morph/dt`
+- **This repo SDK** — `sdk/sumeru-api-config.js`, `sdk/sumeru-mugen-morph-api.js`, `sdk/sumeru-avatar.js`, `sdk/sumeru-drive.js`, `sdk/sumeru-event-stats.js`
 - **AvatarJS** (CDN render core) + **local Workers** (`workers/`)
 
 **Start here:** [TalkingHead Developer Guide](./docs/TalkingHead-Developer-Guide.md)
@@ -61,11 +61,15 @@ For a stripped-down starting point to copy into your project, use [`examples/min
 
 |                | Value                              |
 | -------------- | ---------------------------------- |
-| **API origin** | `https://overseas.sumeruai.com`    |
-| **API base**   | `https://overseas.sumeruai.com/v1` |
+| **API origin** | `https://api.mugen3d.ai`    |
+| **API base**   | `https://api.mugen3d.ai/v1` |
 | **Auth**       | `POST /v1/access/auth`             |
 
-Token is issued by [overseas.sumeruai.com](https://overseas.sumeruai.com). See [Developer API](https://api.sumeruai.us) for the Open API reference.
+Token is issued by `POST https://api.mugen3d.ai/v1/access/auth`. See [Developer API](https://mugen3d.ai/api/developers/docs-api) for the Open API reference.
+
+Defaults and origin normalization live in `sdk/sumeru-api-config.js`. `setApiOrigin()` accepts either an origin or a `/v1` base URL, including a trailing slash. A custom origin does not enable automatic fallback to older endpoints.
+
+The MugenMorph API module is `sdk/sumeru-mugen-morph-api.js`; its public helpers include `mugenMorphDt()`, `requestMugenMorphDt()`, `decodeMugenMorphDtResponse()`, `packMugenMorphDriveData()` and `packMugenMorphFromDtResponse()`. Update existing imports and call sites: previous module and function names have no compatibility aliases.
 
 ## Bundled Quick demo assets
 
@@ -89,10 +93,10 @@ ACCESS_KEY=... SECRET_KEY=... VOICE_ID=... MODEL_ID=... DOWNLOAD_LINK=... \
 
 ```javascript
 import { createAvatar, modelUrlFromSelfHost } from "./sdk/sumeru-avatar.js";
-import { auth } from "./sdk/sumeru-atf-api.js";
 import { driveFromAudioFile } from "./sdk/sumeru-drive.js";
 
-const token = await auth(accessKey, secretKey);
+// Supplied by your application server after it calls /v1/access/auth.
+const token = shortLivedTokenFromYourServer;
 const avatar = await createAvatar({
   canvas: document.querySelector("#canvas"),
   modelUrl: modelUrlFromSelfHost("https://cdn.your-company.com/talkinghead/mdl_xxx/"),
@@ -101,6 +105,8 @@ const avatar = await createAvatar({
 
 await driveFromAudioFile(avatar, token, { modelId, file: wavFile });
 ```
+
+In production, keep `secretKey` on your application server and supply the browser with a short-lived token. The Developer sandbox retains `auth(accessKey, secretKey)` for local debugging; this repository does not include a token service.
 
 See the [Developer Guide](./docs/TalkingHead-Developer-Guide.md) for the full Open API flow, [minimal copy checklist](./docs/TalkingHead-Developer-Guide.md#40-minimal-integration-files-to-copy), and [`sumeru-avatar.js` API](./docs/TalkingHead-Developer-Guide.md#74-sdk-sumeru-avatarjs).
 
@@ -116,7 +122,7 @@ TalkingHead/
 │   └── models/             # Quick demo files[] (local first)
 ├── examples/
 │   └── minimal.html        # Minimal integration template (copy into your app)
-├── sdk/                    # atf-api, avatar, drive, event-stats
+├── sdk/                    # api-config, mugen-morph-api, avatar, drive, event-stats
 ├── workers/                # decoderWorker.js, rendererWorker.js
 ├── scripts/provision-assets.mjs
 └── docs/
@@ -130,6 +136,12 @@ Decoder/renderer internals are served from SumeruAI CDN with AvatarJS. Do not re
 ## CORS
 
 Browser calls to API / OSS / CDN require server-side CORS for your origin. Test locally with `npx serve .` first.
+
+## Verification
+
+Run `npm test` for mocked API contract tests. They cover the new gateway, authentication, MugenMorph DT protobuf/JSON responses, independent WAV segments, model file readiness and event request construction; no real API calls are made.
+
+The event helper now defaults to `https://api.mugen3d.ai/v1/event-stats/increment`, retaining its existing anonymous SDK route. That route is absent from the local OpenAPI contract and still needs deployment verification. It remains independent of the business API origin and supports `siteOrigin` overrides; reporting failures do not block avatar rendering.
 
 ## License
 

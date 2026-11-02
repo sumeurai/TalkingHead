@@ -8,6 +8,6 @@ export default {
   // modelDir: "./demo/models/YOUR_MODEL_ID/",
   // modelFiles: ["fileA", "fileB"],
   // downloadLink: "",
-  // Event ping API origin (createAvatar onReady). Default: https://api.sumeruai.us
-  // siteOrigin: "https://api.sumeruai.us",
+  // Event ping API origin (createAvatar onReady). Default: https://api.mugen3d.ai
+  // siteOrigin: "https://api.mugen3d.ai",
 };

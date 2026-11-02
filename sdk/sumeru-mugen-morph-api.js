@@ -1,26 +1,26 @@
 /**
- * SumeruAI Developer Open API helpers for TalkingHead + AudioToFace (DT).
- * API base: https://overseas.sumeruai.com/v1
+ * SumeruAI Developer Open API helpers for TalkingHead + MugenMorph (DT).
+ * API base: https://api.mugen3d.ai/v1
  * Token: POST {origin}/v1/access/auth
- * DT: POST /audio-to-face/dt { status, traceId, modelId, data } → protobuf
+ * DT: POST /mugen-morph/dt { status, traceId, modelId, data } → protobuf
  */
 
-export const API_ORIGINS = {
-  overseas: "https://overseas.sumeruai.com",
-  prod: "https://api.sumeruai.us",
-};
+import { API_ORIGINS, DEFAULT_API_ORIGIN, normalizeApiOrigin } from "./sumeru-api-config.js";
 
-let apiOrigin = API_ORIGINS.overseas;
+export { API_ORIGINS };
 
-/** @returns e.g. https://overseas.sumeruai.com/v1 */
+let apiOrigin = DEFAULT_API_ORIGIN;
+
+/** @returns e.g. https://api.mugen3d.ai/v1 */
 export function getApiBase() {
   return `${apiOrigin.replace(/\/$/, "")}/v1`;
 }
 
-/** @param {string} origin — site origin, e.g. https://overseas.sumeruai.com */
+/** @param {string} origin — site origin, e.g. https://api.mugen3d.ai */
 export function setApiOrigin(origin) {
   if (!origin) return;
-  apiOrigin = origin.replace(/\/$/, "");
+  const normalized = normalizeApiOrigin(origin);
+  if (normalized) apiOrigin = normalized;
 }
 
 const TTS_MAX_CHARS = 150;
@@ -47,7 +47,7 @@ async function apiJson(path, { method = "GET", token, body, headers = {} } = {})
     throw new Error(`API not found (404): ${method} ${path} — confirm gateway deployment`);
   }
   const json = await parseJson(res);
-  if (json.code !== 200) {
+  if (!res.ok || json.code !== 200) {
     throw new Error(json.msg || `Request failed (${json.code})`);
   }
   return json.data;
@@ -61,7 +61,7 @@ export async function auth(accessKey, secretKey) {
     body: JSON.stringify({ accessKey, secretKey }),
   });
   const json = await parseJson(res);
-  if (json.code !== 200) throw new Error(json.msg || "Auth failed");
+  if (!res.ok || json.code !== 200) throw new Error(json.msg || "Auth failed");
   return json.data.accessToken;
 }
 
@@ -114,7 +114,7 @@ export async function getModel(token, modelId) {
 }
 
 /**
- * Poll until status=1. Prefer `files[]` (name + url, 24h temp).
+ * Poll until status=1 and `files[]` is non-empty (name + url, 24h temp).
  * Next: download every file to YOUR server (keep `name`), then
  * `createAvatar({ modelUrl: modelUrlFromSelfHost(yourDirectory) })`.
  * Do not pass `downloadLink` / `files[].url` into `createAvatar`.
@@ -124,7 +124,7 @@ export async function pollModel(token, modelId, { intervalMs = 3000, timeoutMs =
   while (Date.now() < deadline) {
     const data = await getModel(token, modelId);
     const filesReady = Array.isArray(data.files) && data.files.length > 0;
-    if (String(data.status) === "1" && (filesReady || data.downloadLink)) return data;
+    if (String(data.status) === "1" && filesReady) return data;
     if (String(data.status) === "4") throw new Error(data.failMessage || "Model generation failed");
     await new Promise((r) => setTimeout(r, intervalMs));
   }
@@ -248,8 +248,8 @@ function bytesToBase64(bytes) {
 const PROTOBUF_CT = "application/x-protobuf";
 const DT_MAX_SLICE_SEC = 30;
 
-/** OpenAPI AudioToFaceDTUnpackVO / A2fChat2dResponse field numbers. */
-const A2F_CHAT2D_FIELDS = {
+/** DT response wire fields; local message names do not affect protobuf encoding. */
+const MUGEN_MORPH_DT_FIELDS = {
   1: "fps",
   2: "num_frames",
   3: "model_id",
@@ -342,10 +342,10 @@ function unpackedHasEmote(data) {
   return Boolean(data?.AK && data?.ABI && data?.ATI && data?.API) || Boolean(data?.emoteKey);
 }
 
-function mapA2fFields(fields) {
+function mapMugenMorphFields(fields) {
   const out = {};
   for (const f of fields) {
-    const name = A2F_CHAT2D_FIELDS[f.n];
+    const name = MUGEN_MORPH_DT_FIELDS[f.n];
     if (!name) continue;
     if (f.wire === "varint") out[name] = f.value;
     else if (f.wire === "bytes") out[name] = utf8(f.value);
@@ -353,25 +353,25 @@ function mapA2fFields(fields) {
   return normalizeDtUnpack(out);
 }
 
-function decodeInnerA2f(bytes) {
-  return mapA2fFields(inspectProtobufFields(bytes));
+function decodeInnerMugenMorph(bytes) {
+  return mapMugenMorphFields(inspectProtobufFields(bytes));
 }
 
 /**
- * Unpack POST /audio-to-face/dt success body.
- * Live gateway wraps A2fChat2dResponse:
- *   1:code (varint, 200)  2:msg (string)  3:A2fChat2dResponse
+ * Unpack POST /mugen-morph/dt success body.
+ * Live gateway wraps MugenMorphDtResponse:
+ *   1:code (varint, 200)  2:msg (string)  3:MugenMorphDtResponse
  */
-export function decodeA2fChat2dResponse(bytes) {
+export function decodeMugenMorphDtResponse(bytes) {
   const fields = inspectProtobufFields(bytes);
   const codeField = fields.find((f) => f.n === 1 && f.wire === "varint");
   const dataField = fields.find((f) => f.n === 3 && f.wire === "bytes");
   if (codeField?.value === 200 && dataField?.value?.length) {
-    const inner = decodeInnerA2f(dataField.value);
+    const inner = decodeInnerMugenMorph(dataField.value);
     if (unpackedHasEmote(inner)) return inner;
   }
 
-  const mapped = decodeInnerA2f(bytes);
+  const mapped = decodeInnerMugenMorph(bytes);
   if (unpackedHasEmote(mapped)) return mapped;
 
   for (const f of fields) {
@@ -386,14 +386,14 @@ export function decodeA2fChat2dResponse(bytes) {
       }
     }
     try {
-      const nested = decodeInnerA2f(f.value);
+      const nested = decodeInnerMugenMorph(f.value);
       if (unpackedHasEmote(nested)) return nested;
     } catch {
       /* not nested proto */
     }
   }
 
-  throw new Error("Failed to unpack A2fChat2dResponse (fps/num_frames/model_id/ABI/AK/API/ATI)");
+  throw new Error("Failed to unpack MugenMorphDtResponse (fps/num_frames/model_id/ABI/AK/API/ATI)");
 }
 
 function parseJsonObject(text) {
@@ -411,23 +411,23 @@ async function readDtHttpResponse(res) {
 
   if (!res.ok || looksLikeJsonBytes(buf) || (ct.includes("json") && !ct.includes("protobuf"))) {
     if (!buf.byteLength) {
-      throw new Error(`POST /audio-to-face/dt failed (HTTP ${res.status})`);
+      throw new Error(`POST /mugen-morph/dt failed (HTTP ${res.status})`);
     }
     const json = parseJsonObject(asText());
     if (json.code != null && json.code !== 200) {
-      throw new Error(json.msg || `Audio-to-face DT failed (${json.code})`);
+      throw new Error(json.msg || `MugenMorph DT failed (${json.code})`);
     }
     if (!res.ok) {
-      throw new Error(json.msg || `POST /audio-to-face/dt failed (HTTP ${res.status})`);
+      throw new Error(json.msg || `POST /mugen-morph/dt failed (HTTP ${res.status})`);
     }
     return normalizeDtUnpack(json.data ?? json);
   }
 
   if (res.status === 404) {
-    throw new Error("POST /audio-to-face/dt returned 404 — check API deployment");
+    throw new Error("POST /mugen-morph/dt returned 404 — check API deployment");
   }
   if (!buf.byteLength) return {};
-  return decodeA2fChat2dResponse(buf);
+  return decodeMugenMorphDtResponse(buf);
 }
 
 function isWav(bytes) {
@@ -568,7 +568,7 @@ export function normalizeEmoteFields(emoteRaw) {
   return fields;
 }
 
-export async function packAtfDriveData({ emoteKey, audioKey, fps }) {
+export async function packMugenMorphDriveData({ emoteKey, audioKey, fps }) {
   const emoteRaw = await fetchEmotePayload(emoteKey);
   const emote = normalizeEmoteFields(emoteRaw);
 
@@ -590,15 +590,15 @@ export async function packAtfDriveData({ emoteKey, audioKey, fps }) {
 }
 
 /**
- * Build AvatarJS drive payload from /audio-to-face/dt response.
+ * Build AvatarJS drive payload from /mugen-morph/dt response.
  * Supports URL keys (prod docs) or inline AK/ABI/ATI/API (test env).
  */
-export async function packAtfFromDtResponse(data, audioBase64) {
-  if (!data) throw new Error("Empty ATF data");
+export async function packMugenMorphFromDtResponse(data, audioBase64) {
+  if (!data) throw new Error("Empty MugenMorph data");
   data = normalizeDtUnpack(data);
 
   if (data.emoteKey && data.audioKey) {
-    return packAtfDriveData({
+    return packMugenMorphDriveData({
       emoteKey: data.emoteKey,
       audioKey: data.audioKey,
       fps: data.fps,
@@ -618,7 +618,7 @@ export async function packAtfFromDtResponse(data, audioBase64) {
       if (!audioRes.ok) throw new Error(`audio fetch ${audioRes.status}`);
       audioArray = new Uint8Array(await audioRes.arrayBuffer());
     } else {
-      throw new Error("ATF inline payload needs audioBase64 or audioKey URL");
+      throw new Error("MugenMorph inline payload needs audioBase64 or audioKey URL");
     }
     return {
       AK: data.AK,
@@ -633,23 +633,23 @@ export async function packAtfFromDtResponse(data, audioBase64) {
     };
   }
 
-  throw new Error("Unexpected ATF response — missing emoteKey or AK/ABI/ATI/API");
+  throw new Error("Unexpected MugenMorph response — missing emoteKey or AK/ABI/ATI/API");
 }
 
 /**
- * POST /audio-to-face/dt — one slice.
+ * POST /mugen-morph/dt — one slice.
  * Body: { status, traceId, modelId, data }. Success is protobuf; errors are JSON.
  */
-export async function requestAudioToFaceDt(
+export async function requestMugenMorphDt(
   token,
   { modelId, audioBase64, traceId, status = "start" },
 ) {
-  if (!modelId) throw new Error("modelId is required for POST /audio-to-face/dt");
+  if (!modelId) throw new Error("modelId is required for POST /mugen-morph/dt");
   const data = status === "end" ? (audioBase64 ?? "") : (audioBase64 ?? "");
   if (status !== "end" && !data) {
     throw new Error("data (audio Base64) is required on start/middle");
   }
-  const res = await fetch(`${getApiBase()}/audio-to-face/dt`, {
+  const res = await fetch(`${getApiBase()}/mugen-morph/dt`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -664,18 +664,18 @@ export async function requestAudioToFaceDt(
     }),
   });
   if (res.status === 404) {
-    throw new Error("POST /audio-to-face/dt returned 404 — check API deployment");
+    throw new Error("POST /mugen-morph/dt returned 404 — check API deployment");
   }
   return readDtHttpResponse(res);
 }
 
-/** POST /audio-to-face/dt → AvatarJS drive payload (start/middle/end + protobuf unpack). */
-export async function audioToFaceDt(token, { modelId, audioBase64, traceId }) {
+/** POST /mugen-morph/dt → AvatarJS drive payload (start/middle/end + protobuf unpack). */
+export async function mugenMorphDt(token, { modelId, audioBase64, traceId }) {
   const tid = traceId ?? crypto.randomUUID();
   const slices = splitAudioBase64ForDt(audioBase64);
   const parts = [];
   for (let i = 0; i < slices.length; i++) {
-    const unpacked = await requestAudioToFaceDt(token, {
+    const unpacked = await requestMugenMorphDt(token, {
       modelId,
       audioBase64: slices[i],
       traceId: tid,
@@ -684,7 +684,7 @@ export async function audioToFaceDt(token, { modelId, audioBase64, traceId }) {
     if (unpackedHasEmote(unpacked)) parts.push(unpacked);
   }
   try {
-    const end = await requestAudioToFaceDt(token, {
+    const end = await requestMugenMorphDt(token, {
       modelId,
       audioBase64: "",
       traceId: tid,
@@ -695,9 +695,9 @@ export async function audioToFaceDt(token, { modelId, audioBase64, traceId }) {
     if (!parts.length) throw err;
   }
   if (!parts.length) {
-    throw new Error("POST /audio-to-face/dt returned no lip-sync frames");
+    throw new Error("POST /mugen-morph/dt returned no lip-sync frames");
   }
-  return packAtfFromDtResponse(mergeDtUnpack(parts), audioBase64);
+  return packMugenMorphFromDtResponse(mergeDtUnpack(parts), audioBase64);
 }
 
 /** Persist emote + optional WAV (base64) for Play welcome after reload. */

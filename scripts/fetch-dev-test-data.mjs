@@ -7,12 +7,16 @@
  *   $env:SECRET_KEY="YOUR_SECRET_KEY"
  *   $env:MODEL_ID="YOUR_MODEL_ID"
  *   $env:VOICE_ID="YOUR_VOICE_ID"
- *   $env:API_ORIGIN="https://overseas.sumeruai.com"   # optional
+ *   $env:API_ORIGIN="https://api.mugen3d.ai"   # optional
  *   node scripts/fetch-dev-test-data.mjs
  */
 
-const API_ORIGIN = process.env.API_ORIGIN ?? "https://overseas.sumeruai.com";
-const API_BASE = `${API_ORIGIN.replace(/\/$/, "")}/v1`;
+import { getApiBase, setApiOrigin } from "../sdk/sumeru-mugen-morph-api.js";
+import { DEFAULT_API_ORIGIN } from "../sdk/sumeru-api-config.js";
+
+const API_ORIGIN = process.env.API_ORIGIN ?? DEFAULT_API_ORIGIN;
+setApiOrigin(API_ORIGIN);
+const API_BASE = getApiBase();
 const ACCESS_KEY = process.env.ACCESS_KEY ?? "";
 const SECRET_KEY = process.env.SECRET_KEY ?? "";
 const MODEL_ID = process.env.MODEL_ID ?? "";

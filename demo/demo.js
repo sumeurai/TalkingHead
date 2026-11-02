@@ -1,12 +1,13 @@
 import { createAvatar, modelUrlFromSelfHost } from "../sdk/sumeru-avatar.js";
 import { setSiteOrigin } from "../sdk/sumeru-event-stats.js";
+import { DEFAULT_API_ORIGIN, normalizeApiOrigin } from "../sdk/sumeru-api-config.js";
 import {
   auth,
   getModel,
   pollModel,
   setApiOrigin,
   getApiBase,
-} from "../sdk/sumeru-atf-api.js";
+} from "../sdk/sumeru-mugen-morph-api.js";
 import { driveFromAudioFile } from "../sdk/sumeru-drive.js";
 import {
   loadAssetsCache,
@@ -58,7 +59,7 @@ const bundledAudioUrl =
     DEFAULT_AUDIO_FILE,
   ) || DEFAULT_AUDIO_FILE;
 
-const DEFAULT_API_ORIGIN_HINT = "https://overseas.sumeruai.com";
+const DEFAULT_API_ORIGIN_HINT = DEFAULT_API_ORIGIN;
 const demoSiteOrigin = pickConfigString(localConfig.siteOrigin);
 if (demoSiteOrigin) setSiteOrigin(demoSiteOrigin);
 
@@ -239,7 +240,7 @@ function normalizeApiOriginInput(raw) {
   if (!trimmed) {
     throw new Error(`Fill API origin (e.g. ${DEFAULT_API_ORIGIN_HINT})`);
   }
-  return trimmed.replace(/\/v1\/?$/, "").replace(/\/$/, "");
+  return normalizeApiOrigin(trimmed);
 }
 
 function applyApiOriginFromForm() {
@@ -653,10 +654,10 @@ async function handleDriveFromAudio() {
   }
 
   els.btnDriveAudio.disabled = true;
-  setDevBadge("ATF…", false);
+  setDevBadge("MugenMorph…", false);
   try {
     const token = await ensureAuth();
-    log(`POST /audio-to-face/dt · ${file.name}`, "ok");
+    log(`POST /mugen-morph/dt · ${file.name}`, "ok");
     await driveFromAudioFile(developer.avatar, token, { modelId, file });
     setDevBadge("Playing", true);
     log("Playing lip-sync", "ok");

@@ -16,19 +16,21 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  audioToFaceDt,
+  mugenMorphDt,
   createStyleGeneration,
   pollStyleGeneration,
   queryStyles,
   setApiOrigin,
-} from "../sdk/sumeru-atf-api.js";
+  getApiBase,
+} from "../sdk/sumeru-mugen-morph-api.js";
+import { DEFAULT_API_ORIGIN } from "../sdk/sumeru-api-config.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
 
-const API_ORIGIN = process.env.API_ORIGIN ?? "https://overseas.sumeruai.com";
-const API_BASE = `${API_ORIGIN.replace(/\/$/, "")}/v1`;
+const API_ORIGIN = process.env.API_ORIGIN ?? DEFAULT_API_ORIGIN;
 setApiOrigin(API_ORIGIN);
+const API_BASE = getApiBase();
 
 const ACCESS_KEY = process.env.ACCESS_KEY ?? "";
 const SECRET_KEY = process.env.SECRET_KEY ?? "";
@@ -49,7 +51,7 @@ const CACHE_OUT = path.join(ROOT, "demo", "assets-cache.json");
 function modelReady(data) {
   return (
     String(data.status) === "1" &&
-    ((Array.isArray(data.files) && data.files.length > 0) || data.downloadLink)
+    Array.isArray(data.files) && data.files.length > 0
   );
 }
 
@@ -257,8 +259,8 @@ async function main() {
   fs.writeFileSync(WAV_OUT, Buffer.from(audioBase64, "base64"));
   console.log("  wrote", WAV_OUT);
 
-  console.log("ATF /dt…");
-  const drive = await audioToFaceDt(token, { modelId, audioBase64 });
+  console.log("MugenMorph /dt…");
+  const drive = await mugenMorphDt(token, { modelId, audioBase64 });
   const emotePayload = {
     fps: drive.fps ?? 25,
     modelId,

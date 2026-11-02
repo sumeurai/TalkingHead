@@ -94,7 +94,7 @@ export function modelUrlFromSelfHost(base) {
  * @param {(percent: number) => void} [opts.onProgress] - AvatarJS `updateSeekBar`: playback progress 0–100
  * @param {() => void} [opts.onAudioEnd] - AvatarJS `audioEnd`: audio track finished
  * @param {boolean} [opts.telemetry=true] - ping eventType=2 (install success) on ready
- * @param {string} [opts.siteOrigin] - API origin for the ping (default https://api.sumeruai.us)
+ * @param {string} [opts.siteOrigin] - API origin for the ping (default https://api.mugen3d.ai)
  */
 export async function createAvatar({
   canvas,
@@ -150,7 +150,7 @@ export async function createAvatar({
   );
 
   return {
-    /** Feed ATF drive data. append=false for new clip; true for stream chunks. */
+    /** Feed MugenMorph drive data. append=false for new clip; true for stream chunks. */
     drive(data, append = false) {
       if (!ready) throw new Error("Avatar not ready — wait for onReady");
       instance.receiveData(cloneDrivePayload(data), append);

@@ -8,8 +8,8 @@ This guide explains how to use the **SumeruAI Developer Open API** and the SDK i
 
 | Layer             | Source                                                                 | Role                                                                        |
 | ----------------- | ---------------------------------------------------------------------- | --------------------------------------------------------------------------- |
-| **Open API**      | `POST /v1/*`                                                           | Auth, voice clone, model, TTS, lip-sync `/audio-to-face/dt`                 |
-| **This repo SDK** | `sdk/sumeru-atf-api.js`, `sdk/sumeru-avatar.js`, `sdk/sumeru-drive.js` | HTTP helpers + lip-sync drive helpers                                       |
+| **Open API**      | `POST /v1/*`                                                           | Auth, voice clone, model, TTS, lip-sync `/mugen-morph/dt`                 |
+| **This repo SDK** | `sdk/sumeru-mugen-morph-api.js`, `sdk/sumeru-avatar.js`, `sdk/sumeru-drive.js` | HTTP helpers + lip-sync drive helpers                                       |
 | **AvatarJS**      | CDN `static.sumeruai.com`                                              | Closed-source render core                                                   |
 | **Workers**       | This repo `workers/`                                                   | `decoderWorker.js`, `rendererWorker.js` must be served from the same origin |
 
@@ -17,7 +17,7 @@ This guide explains how to use the **SumeruAI Developer Open API** and the SDK i
 
 | Module                  | Responsibility                                | Typical imports                                            |
 | ----------------------- | --------------------------------------------- | ---------------------------------------------------------- |
-| `sdk/sumeru-atf-api.js`     | HTTP: auth, `/audio-to-face/dt`, optional TTS helpers | `auth`, `audioToFaceDt`                              |
+| `sdk/sumeru-mugen-morph-api.js`     | HTTP: auth, `/mugen-morph/dt`, optional TTS helpers | `auth`, `mugenMorphDt`                              |
 | `sdk/sumeru-avatar.js`      | Load AvatarJS, mount canvas, playback control | `createAvatar`, `cloneDrivePayload`                        |
 | `sdk/sumeru-drive.js`       | Build drive payload + play orchestration      | `driveFromAudioFile`, `playDriveOnAvatar`                  |
 | `sdk/sumeru-event-stats.js` | Open API funnel ping (no token)               | `incrementEventStat`, `setApiOrigin`                       |
@@ -30,15 +30,17 @@ This guide explains how to use the **SumeruAI Developer Open API** and the SDK i
 
 |                                    | Value                                 |
 | ---------------------------------- | ------------------------------------- |
-| **API origin** (token / gateway)   | `https://overseas.sumeruai.com`       |
-| **API base**                       | `https://overseas.sumeruai.com/v1`    |
+| **API origin** (token / gateway)   | `https://api.mugen3d.ai`       |
+| **API base**                       | `https://api.mugen3d.ai/v1`    |
 | **Auth**                           | `POST /v1/access/auth`                |
 
-Enter the **gateway origin** only (no `/v1`). Developer sandbox pre-fills `https://overseas.sumeruai.com`. Token is issued by that host, not `api.sumeruai.us`.
+Developer sandbox pre-fills `https://api.mugen3d.ai`. Both an origin and a `/v1` base URL are accepted; trailing slashes are normalized so `/v1` is added exactly once. Token requests use the selected gateway. SDK helpers, Demo and provisioning scripts share `sdk/sumeru-api-config.js`; a custom origin does not enable fallback to older endpoints.
 
-Official API reference: [Developer API](https://api.sumeruai.us)
+Official API reference: [Developer API](https://mugen3d.ai/api/developers/docs-api)
 
 Credentials: `accessKey` + `secretKey` → `POST /v1/access/auth` → `accessToken` (Bearer).
+
+Production applications exchange keys on their own server and provide only a short-lived token to the browser. Browser key entry and `auth()` are retained for local Developer sandbox debugging. No token server is included in this repository.
 
 **Do not commit** `config.local.js` (listed in `.gitignore`).
 
@@ -50,7 +52,7 @@ Online demo: `index.html` (`npx serve .` or GitHub Pages)
 
 ### 3.1 Quick demo (default · no key)
 
-For visitors / GitHub users — **no TTS or ATF API calls**.
+For visitors / GitHub users — **no TTS or MugenMorph API calls**.
 
 | File                             | Purpose                                 |
 | -------------------------------- | --------------------------------------- |
@@ -83,7 +85,8 @@ Copy these from this repo into your app (see `examples/minimal.html`):
 your-app/
 ├── index.html                 ← start from examples/minimal.html
 ├── sdk/
-│   ├── sumeru-atf-api.js      ← required for API calls
+│   ├── sumeru-api-config.js   ← required (shared gateway configuration)
+│   ├── sumeru-mugen-morph-api.js      ← required for API calls
 │   ├── sumeru-avatar.js       ← required for canvas / playback
 │   ├── sumeru-event-stats.js  ← required (imported by sumeru-avatar.js)
 │   └── sumeru-drive.js        ← optional if you build drive data yourself
@@ -102,13 +105,13 @@ your-app/
 - [ ] Call `avatar.stop()` before the next clip; call `avatar.destroy()` when leaving the page or swapping models
 - [ ] Use a **dedicated `<canvas>`** per avatar instance — do not reuse a canvas after `transferControlToOffscreen` (see §7.5)
 
-You already have a TalkingHead **modelId**, audio, and model **files** hosted on **your server**. In the browser:
+You already have a TalkingHead **modelId**, audio, and model **files** hosted on **your server**. The end-to-end flow is:
 
 ```
-① POST /v1/access/auth
-   → accessToken
+① Your application server calls POST /v1/access/auth
+   → short-lived accessToken for the browser
 
-② Poll GET /v1/avatars/models/{modelId} until status=1
+② Poll GET /v1/avatars/models/{modelId} until status=1 and files is non-empty
    → download every files[] (name + url, 24h temp)
    → upload to YOUR server, keep original names
    → createAvatar({ modelUrl: "https://your-cdn/.../mdl_xxx/" })
@@ -117,10 +120,10 @@ You already have a TalkingHead **modelId**, audio, and model **files** hosted on
 ③ Your WAV/audio as base64
    /dt does not return audio — keep this clip for playback.
 
-④ POST /v1/audio-to-face/dt
+④ POST /v1/mugen-morph/dt
    { status, traceId, modelId, data }   // data = audio Base64; end 允许 ""
    Accept: application/x-protobuf
-   → protobuf A2fChat2dResponse: fps / num_frames / model_id / ABI / AK / API / ATI
+   → protobuf MugenMorphDtResponse: fps / num_frames / model_id / ABI / AK / API / ATI
    → SDK unpacks lip-sync and attaches your audio as audioArray
 
 ⑤ avatar.drive(driveData)   // sdk/sumeru-drive.js wraps ③–⑤
@@ -129,11 +132,10 @@ You already have a TalkingHead **modelId**, audio, and model **files** hosted on
 Use **`sdk/sumeru-drive.js`**:
 
 ```javascript
-import { auth } from "./sdk/sumeru-atf-api.js";
 import { createAvatar, modelUrlFromSelfHost } from "./sdk/sumeru-avatar.js";
 import { driveFromAudioFile } from "./sdk/sumeru-drive.js";
 
-const token = await auth(accessKey, secretKey);
+const token = shortLivedTokenFromYourServer;
 const avatar = await createAvatar({
   canvas,
   modelUrl: modelUrlFromSelfHost("https://cdn.your-company.com/talkinghead/mdl_xxx/"),
@@ -150,7 +152,7 @@ Model / voice **creation** APIs (`POST /v1/avatars/models`, `/v1/voices`, etc.) 
 
 | ID            | Purpose                                                                                          |
 | ------------- | ------------------------------------------------------------------------------------------------ |
-| **modelId**   | **Required** for **`/audio-to-face/dt`**; `GET /v1/avatars/models/{modelId}` → `files[]` to host |
+| **modelId**   | **Required** for **`/mugen-morph/dt`**; `GET /v1/avatars/models/{modelId}` → `files[]` to host |
 | **avatarsId** | Mugen3D Studio product id; portrait API returns `modelId`, etc.                                  |
 
 You cannot call `/dt` with avatarsId alone — you need **modelId + audio**.
@@ -246,7 +248,7 @@ $env:ACCESS_KEY="YOUR_ACCESS_KEY"
 $env:SECRET_KEY="YOUR_SECRET_KEY"
 $env:MODEL_ID="YOUR_MODEL_ID"
 $env:VOICE_ID="YOUR_VOICE_ID"
-$env:API_ORIGIN="https://api.sumeruai.us"   # optional
+$env:API_ORIGIN="https://api.mugen3d.ai"   # optional
 node scripts/fetch-dev-test-data.mjs
 ```
 
@@ -308,7 +310,7 @@ avatar.drive(bundled, false);
 | `status`                  | Streaming | `start` / `middle` / `end`; use `end` for a full clip |
 | 2nd arg `append`          | No        | `false` new clip, `true` append chunk                 |
 
-**Replay:** AvatarJS **detaches** the underlying `ArrayBuffer` of `audioArray` when decoding WAV. You may call `avatar.drive()` multiple times with the same `driveData` object — the SDK clones via `cloneDrivePayload()` before `receiveData`. If you call AvatarJS `receiveData` directly, pass `new Uint8Array(buf.slice(0))` yourself (same as Studio `useAtfChat`).
+**Replay:** AvatarJS **detaches** the underlying `ArrayBuffer` of `audioArray` when decoding WAV. You may call `avatar.drive()` multiple times with the same `driveData` object — the SDK clones via `cloneDrivePayload()` before `receiveData`. If you call AvatarJS `receiveData` directly, pass `new Uint8Array(buf.slice(0))` yourself, as in the Studio playback flow.
 
 Deploy `workers/decoderWorker.js` and `workers/rendererWorker.js` on the same origin as the page; reference them with `workerBase: "./workers/"`.
 
@@ -329,7 +331,7 @@ Deploy `workers/decoderWorker.js` and `workers/rendererWorker.js` on the same or
 
 | Method                | AvatarJS             | Description                                                           |
 | --------------------- | -------------------- | --------------------------------------------------------------------- |
-| `drive(data, append)` | `receiveData`        | Feed ATF drive payload; `append=false` new clip, `true` stream append |
+| `drive(data, append)` | `receiveData`        | Feed MugenMorph drive payload; `append=false` new clip, `true` stream append |
 | `stop()`              | `stopPlay`           | **Stop immediately** lip-sync and audio (tab switch, Stop button)     |
 | `unlockAudio()`       | —                    | Resume `AudioContext` inside a user gesture (otherwise silent)        |
 | `destroy()`           | `stopPlay` + `close` | Tear down instance, release workers                                   |
@@ -408,13 +410,13 @@ Thin wrapper around [AvatarJS](https://static.sumeruai.com/new-avatars/AvatarJS.
 | `onAudioEnd`       | No       | Audio track finished                                       |
 | `onError`          | No       | `(err)` load / decode / render failure                     |
 | `telemetry`        | No       | Default `true`. On ready, ping install-success (`eventType=2`). Set `false` to disable. |
-| `siteOrigin`       | No       | API origin for the ping (default `https://api.sumeruai.us`) |
+| `siteOrigin`       | No       | API origin for the ping (default `https://api.mugen3d.ai`) |
 
 **`AvatarHandle` (return value of `createAvatar`)**
 
 | Member                 | Type   | Description                                                                           |
 | ---------------------- | ------ | ------------------------------------------------------------------------------------- |
-| `drive(data, append?)` | method | Feed ATF payload; throws if not ready. See §7.2 for fields. Default `append = false`. |
+| `drive(data, append?)` | method | Feed MugenMorph payload; throws if not ready. See §7.2 for fields. Default `append = false`. |
 | `stop()`               | method | Stop lip-sync and audio immediately                                                   |
 | `unlockAudio()`        | method | Resume suspended `AudioContext` (call inside user gesture)                            |
 | `destroy()`            | method | `stopPlay` + `close`, clear internal instance                                         |
@@ -442,14 +444,14 @@ Cross-reference: drive payload fields → §7.2; callbacks and examples → §7.
 The SDK intentionally exposes a small surface. Use **`avatar.raw`** only when you need AvatarJS APIs not wrapped here (e.g. internal debug hooks).
 
 - **`avatar.raw`** — the AvatarJS constructor instance passed `{ canvas }`, model URL, and worker URLs.
-- **Direct `receiveData`** — if you bypass `avatar.drive()`, clone audio bytes yourself: `new Uint8Array(buf.slice(0))` (same pattern as Mugen3D Studio `useAtfChat`).
+- **Direct `receiveData`** — if you bypass `avatar.drive()`, clone audio bytes yourself: `new Uint8Array(buf.slice(0))`, as in the Studio playback flow.
 - **`loadAvatarJS()` preload** — optional: `await loadAvatarJS()` during app boot to hide CDN import latency before the user opens the avatar view.
 
 Do not depend on undocumented AvatarJS methods in production integrations unless SumeruAI documents them — prefer `createAvatar` + `sumeru-drive.js`.
 
 ### 7.7 Usage ping (`sdk/sumeru-event-stats.js`)
 
-On `createAvatar` ready, the SDK silently calls `POST https://api.sumeruai.us/v1/event-stats/increment` (**no token**):
+On `createAvatar` ready, the SDK silently calls `POST https://api.mugen3d.ai/v1/event-stats/increment` (**no token**):
 
 ```json
 {
@@ -469,7 +471,9 @@ On `createAvatar` ready, the SDK silently calls `POST https://api.sumeruai.us/v1
 
 | | URL |
 |--|-----|
-| Default | `https://api.sumeruai.us/v1/event-stats/increment` |
+| Default | `https://api.mugen3d.ai/v1/event-stats/increment` |
+
+The host is migrated, while the existing anonymous SDK route and payload are retained. This route is absent from the local OpenAPI contract and has not been verified against the new deployment. Do not substitute the website's `/web-api/portrait` route without confirming SDK access requirements. The event origin is configured independently of `setApiOrigin()` in the MugenMorph API module.
 
 - `eventType=2` = install / run success. Do **not** report `4` or `5`.
 - `fromPage` is `origin + pathname` only (no query). `anonId` is a per-browser uuid on this origin.
@@ -477,7 +481,7 @@ On `createAvatar` ready, the SDK silently calls `POST https://api.sumeruai.us/v1
 - Failure is ignored — playback is not blocked.
 - **Once per browser profile** on this site origin (`localStorage`). Refresh / new tabs do not increment again.
 - Disable: `createAvatar({ telemetry: false })`.
-- Override API host: `createAvatar({ siteOrigin: "https://api.sumeruai.us" })` or `config.local.js` `siteOrigin`.
+- Override API host: `createAvatar({ siteOrigin: "https://api.mugen3d.ai" })` or `config.local.js` `siteOrigin`.
 - Maintainer replay: `node scripts/ping-event-stats.mjs` (defaults to prod API, 5 times).
 
 ---
@@ -485,7 +489,7 @@ On `createAvatar` ready, the SDK silently calls `POST https://api.sumeruai.us/v1
 ## 8. Local development
 
 ```bash
-cp config.local.example.js config.local.js   # add accessKey / secretKey
+cp config.local.example.js config.local.js   # optional Quick demo overrides
 npm install   # if dependencies are added later
 npx serve .
 # http://localhost:3000
@@ -493,12 +497,14 @@ npx serve .
 
 `config.local.js` can override Quick demo asset paths only. It does **not** pre-fill the Developer sandbox form.
 
+Run `npm test` for mocked gateway, auth, MugenMorph protobuf/JSON, streaming audio, model file readiness, event request and style API checks. These tests do not call real services or verify deployed CORS/protobuf compatibility. Live auth, a short DT clip, actual playback and the anonymous event route still need environment verification.
+
 ---
 
 ## 9. FAQ
 
 **`/dt` success is protobuf, not JSON?**  
-Yes. Send `Content-Type: application/json` and `Accept: application/x-protobuf`. Body is `{ status, traceId, modelId, data }` (`data` = current slice Base64; `end` may be `""`). HTTP 200 is binary (`sdk/proto/a2f_chat2d.proto`: envelope `code`/`msg` + `A2fChat2dResponse`); HTTP 400/500 is JSON `{ code, msg }`. `audioToFaceDt` unpacks and still accepts a legacy JSON fallback.
+Yes. Send `Content-Type: application/json` and `Accept: application/x-protobuf`. Body is `{ status, traceId, modelId, data }` (`data` = current slice Base64; `end` may be `""`). HTTP 200 is binary (`sdk/proto/mugen_morph_dt.proto`: envelope `code`/`msg` + `MugenMorphDtResponse`); HTTP 400/500 is JSON `{ code, msg }`. `mugenMorphDt` unpacks and still accepts a legacy JSON fallback.
 
 **Lip-sync missing but audio plays?**  
 Use audio and emote from the **same** `/dt` call. Do not mix stale OSS keys from an old run.
@@ -507,7 +513,7 @@ Use audio and emote from the **same** `/dt` call. Do not mix stale OSS keys from
 Browsers require a user gesture; click the page then Play. `sumeru-drive.js` calls `unlockAudio()` for you.
 
 **CORS errors?**  
-Direct browser calls to `api.sumeruai.us` / OSS need server-side CORS for your origin. Test locally with `npx serve .`.
+Direct browser calls to `api.mugen3d.ai` / OSS need server-side CORS for your origin. Test locally with `npx serve .`.
 
 **Does `/dt` return audio?**  
 No. It returns lip-sync only. `sumeru-drive.js` sends your audio as `data` and plays that same clip with the unpacked `AK/ABI/ATI/API`.
@@ -522,7 +528,7 @@ The canvas may already be transferred offscreen. Use a **new** `<canvas>` elemen
 You replayed drive data without cloning. Use `avatar.drive()` (not raw `receiveData`) or call `cloneDrivePayload()` first.
 
 **Can I skip `sumeru-drive.js`?**  
-Yes. Build the payload with `sumeru-atf-api.js` (`auth`, `audioToFaceDt`) and call `avatar.unlockAudio()` + `avatar.drive()` yourself.
+Yes. Build the payload with `sumeru-mugen-morph-api.js` (`auth`, `mugenMorphDt`) and call `avatar.unlockAudio()` + `avatar.drive()` yourself.
 
 **Should I pass `downloadLink` into `createAvatar`?**  
 No. Poll `GET /v1/avatars/models/{modelId}` until `status=1`, download every `files[]` item (24h URLs) into **one directory on your server**, keep original `name` (all URLs must share that same prefix), then pass that directory as `modelUrl` (`modelUrlFromSelfHost`).
@@ -531,7 +537,7 @@ No. Poll `GET /v1/avatars/models/{modelId}` until `status=1`, download every `fi
 
 ## 10. Further reading
 
-- [Developer API](https://api.sumeruai.us)
+- [Developer API](https://mugen3d.ai/api/developers/docs-api)
 - OpenAPI spec: `mugen3d/platform/openapi.json`
 
 ---
@@ -543,6 +549,7 @@ No. Poll `GET /v1/avatars/models/{modelId}` until `status=1`, download every `fi
 | 2026-08-11 | Initial Developer Guide                                               |
 | 2026-08-18 | §7.7 usage ping (`bizType=10`, `eventType=2`, no token)               |
 | 2026-08-19 | §7.7 install_success payload (`anonId`, `fromPage`, `sdkVersion`, …)  |
-| 2026-08-20 | §7.7 ping URL `https://api.sumeruai.us/v1/event-stats/increment`      |
+| 2026-08-20 | §7.7 SDK event reporting URL documented. |
 | 2026-08-24 | Host `files[]` on your server; `modelUrl` is that directory. All file URLs must share the same prefix. Quick demo: local → remote → hide. `createAvatar` resolves relative `modelUrl` against the page (avoid `/workers/demo/models` 404). |
-| 2026-08-25 | Token / gateway default: `https://overseas.sumeruai.com` (`POST /v1/access/auth`). |
+| 2026-08-25 | Token / gateway default configuration documented. |
+| 2026-11-02 | Migrated the default gateway to `https://api.mugen3d.ai` and DT to `/v1/mugen-morph/dt`. Renamed the API module to `sumeru-mugen-morph-api.js`, public DT helpers to `mugenMorphDt` / `requestMugenMorphDt`, and decoder/packing helpers and local proto types to MugenMorph. No previous-name aliases. Added shared API configuration, non-empty model files readiness and contract tests; synchronized Demo, scripts, token-based minimal example and documentation. Event host migrated; the existing anonymous event route and deployed binary compatibility remain unverified. |
